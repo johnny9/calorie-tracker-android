@@ -79,7 +79,9 @@ jobs:
           count="$(git rev-list --count HEAD)"
           code="$((base + count))"
           short_sha="${GITHUB_SHA:0:7}"
-          artifact_name="calorie-tracker-${code}-${GITHUB_SHA}"
+          # The signing-key alias is itself a masked secret. Keep it out of this
+          # cross-job output or GitHub will suppress the output as secret-like.
+          artifact_name="signed-release-${code}-${GITHUB_SHA}"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "artifact-name=$artifact_name" >> "$GITHUB_OUTPUT"
           echo "VERSION_CODE=$code" >> "$GITHUB_ENV"
@@ -115,10 +117,18 @@ jobs:
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -1)"
           test -x "$apksigner"
           "$apksigner" verify --verbose dist/calorie-tracker-continuous.apk
-          actual="$($apksigner verify --print-certs dist/calorie-tracker-continuous.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          certificate_report="$($apksigner verify --print-certs dist/calorie-tracker-continuous.apk)"
+          printf '%s\n' "$certificate_report"
+          actual="$(printf '%s\n' "$certificate_report" | sed -nE '/[Cc]ertificate SHA-?256 digest/ { s/.*:[[:space:]]*//; p; q; }' | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
           expected="$(tr '[:lower:]' '[:upper:]' < signing-cert-sha256.txt | tr -d ':[:space:]')"
-          test -n "$actual"
-          test "$actual" = "$expected"
+          if [[ ! "$actual" =~ ^[0-9A-F]{64}$ ]]; then
+            echo "::error::Could not parse the APK signing certificate SHA-256 digest"
+            exit 1
+          fi
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::APK certificate $actual does not match expected certificate $expected"
+            exit 1
+          fi
           (
             cd dist
             sha256sum calorie-tracker-continuous.apk > SHA256SUMS
