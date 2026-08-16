@@ -11,6 +11,16 @@ val ciVersionName = providers.gradleProperty("ciVersionName").orElse("0.1.0-dev"
 val requireCiSigning = providers.gradleProperty("requireCiSigning")
     .map(String::toBoolean)
     .orElse(false)
+val openFoodFactsContactEmail = providers.environmentVariable("OPEN_FOOD_FACTS_CONTACT_EMAIL")
+    .orElse("")
+    .get()
+    .trim()
+val contactEmailIsValid = openFoodFactsContactEmail.matches(Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"))
+val contactEmailLiteral = "\"" + openFoodFactsContactEmail.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+if (openFoodFactsContactEmail.isNotEmpty() && !contactEmailIsValid) {
+    throw GradleException("OPEN_FOOD_FACTS_CONTACT_EMAIL must be a valid contact email")
+}
 
 val keystorePath = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 val keystorePassword = providers.environmentVariable("ANDROID_STORE_PASSWORD").orNull
@@ -22,7 +32,6 @@ val hasCompleteSigningConfig = signingValues.all { !it.isNullOrBlank() }
 if (requireCiSigning.get() && !hasCompleteSigningConfig) {
     throw GradleException("A signed CI build was requested, but one or more signing variables are missing")
 }
-
 android {
     namespace = "com.johnny9.calorietracker"
     compileSdk = 37
@@ -33,6 +42,7 @@ android {
         targetSdk = 37
         versionCode = ciVersionCode.get().toInt()
         versionName = ciVersionName.get()
+        buildConfigField("String", "OPEN_FOOD_FACTS_CONTACT_EMAIL", contactEmailLiteral)
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -115,9 +125,11 @@ dependencies {
 
     implementation("androidx.health.connect:connect-client:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.room:room-testing:2.8.4")
+    testImplementation("org.xerial:sqlite-jdbc:3.41.2.2")
 
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.08.00"))
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

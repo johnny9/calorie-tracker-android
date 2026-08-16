@@ -1,0 +1,121 @@
+{
+  "BrandedFoods": [
+    {
+      "foodClass": "Branded",
+      "description": "Chomps Original Beef Stick - old label",
+      "foodNutrients": [
+        {"type": "FoodNutrient", "nutrient": {"id": 1008, "name": "Energy", "unitName": "kcal"}, "amount": 303.0},
+        {"type": "FoodNutrient", "nutrient": {"id": 1003, "name": "Protein", "unitName": "g"}, "amount": 27.3}
+      ],
+      "brandOwner": "Chomps",
+      "gtinUpc": "0856584004190",
+      "ingredients": "BEEF, WATER, SEA SALT.",
+      "servingSize": 33,
+      "servingSizeUnit": "g",
+      "householdServingFullText": "1 stick",
+      "labelNutrients": {
+        "fat": {"value": 6},
+        "carbohydrates": {"value": 0},
+        "fiber": {"value": 0},
+        "protein": {"value": 9},
+        "calories": {"value": 90}
+      },
+      "fdcId": 200,
+      "dataType": "Branded",
+      "modifiedDate": "1/01/2024",
+      "publicationDate": "1/02/2024",
+      "foodUpdateLog": [{"fdcId": 100, "description": "Older historical revision"}]
+    },
+    {
+      "foodClass": "Branded",
+      "description": "Chomps Original Beef Stick",
+      "foodNutrients": [
+        {"type": "FoodNutrient", "nutrient": {"id": 1008, "number": "208", "name": "Energy", "unitName": "kcal"}, "amount": 303.03},
+        {"type": "FoodNutrient", "nutrient": {"id": 1003, "number": "203", "name": "Protein", "unitName": "g"}, "amount": 30.3},
+        {"type": "FoodNutrient", "nutrient": {"id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g"}, "amount": 0},
+        {"type": "FoodNutrient", "nutrient": {"id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g"}, "amount": 21.21},
+        {"type": "FoodNutrient", "nutrient": {"id": 1079, "number": "291", "name": "Fiber, total dietary", "unitName": "g"}, "amount": 0}
+      ],
+      "foodAttributes": [{"id": 1, "value": "fixture attribute"}],
+      "modifiedDate": "4/29/2026",
+      "availableDate": "4/30/2026",
+      "marketCountry": "United States",
+      "brandOwner": "Chomps",
+      "brandName": "Chomps",
+      "gtinUpc": "0856584004190",
+      "dataSource": "LI",
+      "ingredients": "BEEF, WATER, SEA SALT, ENCAPSULATED LACTIC ACID, CULTURED CELERY POWDER, BLACK PEPPER, GARLIC POWDER, CORIANDER, RED PEPPER.",
+      "servingSize": 33,
+      "servingSizeUnit": "g",
+      "householdServingFullText": "1 stick",
+      "labelNutrients": {
+        "fat": {"value": 7},
+        "carbohydrates": {"value": 0},
+        "fiber": {"value": 0},
+        "protein": {"value": 10},
+        "calories": {"value": 100}
+      },
+      "tradeChannels": ["NO_TRADE_CHANNEL"],
+      "microbes": [],
+      "brandedFoodCategory": "Meat/Poultry/Other Animals - Prepared/Processed",
+      "fdcId": 201,
+      "dataType": "Branded",
+      "publicationDate": "4/30/2026",
+      "foodUpdateLog": [
+        {
+          "fdcId": 200,
+          "description": "This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing. This deliberately long history entry proves that full native update logs survive packing.",
+          "publicationDate": "1/2/2024"
+        }
+      ],
+      "fixtureUnknownField": {"mustRemain": true}
+    },
+    {
+      "foodClass": "Branded",
+      "description": "Lime Sparkling Water",
+      "foodNutrients": [],
+      "brandOwner": "Bubbles Company",
+      "gtinUpc": "00123456789012",
+      "servingSize": 355,
+      "servingSizeUnit": "ml",
+      "householdServingFullText": "1 can",
+      "labelNutrients": {
+        "fat": {"value": 0},
+        "carbohydrates": {"value": 0},
+        "fiber": {"value": 0},
+        "protein": {"value": 0},
+        "calories": {"value": 0}
+      },
+      "fdcId": 300,
+      "dataType": "Branded",
+      "modifiedDate": "2026-03-03",
+      "publicationDate": "2026-04-30",
+      "foodUpdateLog": []
+    },
+    {
+      "foodClass": "Branded",
+      "description": "Plain Whole Milk Yogurt",
+      "foodNutrients": [
+        {"nutrient": {"id": 1079, "name": "Fiber, total dietary", "unitName": "g"}, "amount": 0}
+      ],
+      "brandOwner": "Dairy Fixture",
+      "gtinUpc": "223456789012",
+      "servingSize": 170,
+      "servingSizeUnit": "g",
+      "labelNutrients": {
+        "fat": {"value": 8},
+        "carbohydrates": {"value": 9},
+        "protein": {"value": 9},
+        "calories": {"value": 140}
+      },
+      "fdcId": 400,
+      "dataType": "Branded",
+      "publicationDate": "4/30/2026"
+    },
+    {
+      "foodClass": "Branded",
+      "description": "Invalid fixture without an FDC ID",
+      "fdcId": "not-an-integer"
+    }
+  ]
+}

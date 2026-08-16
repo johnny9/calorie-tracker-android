@@ -4,7 +4,8 @@ import com.johnny9.calorietracker.domain.toMilli
 
 /**
  * A deliberately small, versioned starter catalog for clean-install offline use.
- * Values are rounded from standard-serving references in USDA FoodData Central.
+ * Generic values are rounded from standard-serving references in USDA FoodData Central.
+ * Branded label rows name their manufacturer source explicitly.
  * The UI shows the source so a user can decide whether to use or replace a row.
  */
 object BundledFoods {
@@ -31,6 +32,20 @@ object BundledFoods {
         food("olive-oil-tbsp", "Olive oil", "1 tbsp", 13.5, 119.0, 0.0, 0.0, 13.5, 0.0, now),
         food("potato-baked", "Potato, baked with skin", "1 medium", 173.0, 161.0, 4.3, 36.6, 0.2, 3.8, now),
         food("orange-medium", "Orange", "1 medium", 131.0, 62.0, 1.2, 15.4, 0.2, 3.1, now),
+        brandFood(
+            slug = "chomps-original-beef-33g",
+            name = "Original Beef Stick",
+            brand = "Chomps",
+            serving = "1 stick (33 g)",
+            grams = 33.0,
+            calories = 100.0,
+            protein = 10.0,
+            carbs = 0.0,
+            fat = 7.0,
+            fiber = 0.0,
+            sourceUrl = "https://chomps.com/collections/chomps/products/gluten-free-snack-beef-jerky-stick-original",
+            now = now,
+        ),
     )
 
     private fun food(
@@ -56,6 +71,38 @@ object BundledFoods {
         fiberMilliGram = fiber.toMilli(),
         source = "USDA_REFERENCE",
         sourceId = PACK_VERSION,
+        dataQuality = "REFERENCE",
+        isUserCreated = false,
+        createdAtEpochMs = now,
+    )
+
+    private fun brandFood(
+        slug: String,
+        name: String,
+        brand: String,
+        serving: String,
+        grams: Double,
+        calories: Double,
+        protein: Double,
+        carbs: Double,
+        fat: Double,
+        fiber: Double,
+        sourceUrl: String,
+        now: Long,
+    ) = FoodEntity(
+        id = "seed-brand-v1-$slug",
+        name = name,
+        brand = brand,
+        servingLabel = serving,
+        servingGramsMilli = grams.toMilli(),
+        caloriesMilliKcal = calories.toMilli(),
+        proteinMilliGram = protein.toMilli(),
+        carbsMilliGram = carbs.toMilli(),
+        fatMilliGram = fat.toMilli(),
+        fiberMilliGram = fiber.toMilli(),
+        source = "BRAND_LABEL",
+        sourceId = sourceUrl,
+        dataQuality = "MANUFACTURER_LABEL",
         isUserCreated = false,
         createdAtEpochMs = now,
     )

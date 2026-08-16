@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -48,14 +49,20 @@ import kotlin.math.round
 fun FoodsScreen(viewModel: AppViewModel, padding: PaddingValues) {
     val foods by viewModel.foods.collectAsState()
     val recipes by viewModel.recipes.collectAsState()
+    val onlineSearch by viewModel.onlineFoodSearch.collectAsState()
+    val usdaSearch by viewModel.usdaFoodSearch.collectAsState()
     var search by remember { mutableStateOf("") }
     var showFoodDialog by remember { mutableStateOf(false) }
     var showRecipeDialog by remember { mutableStateOf(false) }
     var showRecipes by remember { mutableStateOf(false) }
 
     val query = search.trim()
-    val filteredFoods = foods.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) || it.brand?.contains(query, ignoreCase = true) == true }
+    val filteredFoods = foods.filter { it.matchesQuery(query) }
     val filteredRecipes = recipes.filter { query.isEmpty() || it.name.contains(query, ignoreCase = true) }
+
+    LaunchedEffect(query, showRecipes) {
+        viewModel.searchUsdaFoods(if (!showRecipes && query.length >= 2) query else "")
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -64,7 +71,7 @@ fun FoodsScreen(viewModel: AppViewModel, padding: PaddingValues) {
     ) {
         item {
             Text("Foods & recipes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text("A local starter catalog and everything you create remain available offline.")
+            Text("Local foods, saved packaged foods, and everything you create remain available offline.")
         }
         item {
             OutlinedTextField(
@@ -75,6 +82,33 @@ fun FoodsScreen(viewModel: AppViewModel, padding: PaddingValues) {
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
             )
+        }
+
+        if (!showRecipes && query.length >= 2) {
+            item {
+                UsdaFoodSearchPanel(
+                    query = query,
+                    state = usdaSearch,
+                    savedFdcIds = foods.asSequence()
+                        .filter { it.source.startsWith("USDA_FDC_") }
+                        .mapNotNull { it.sourceId?.toLongOrNull() }
+                        .toSet(),
+                    onSelect = viewModel::saveUsdaFood,
+                    actionLabel = "Save offline",
+                    disableSaved = true,
+                )
+            }
+        }
+        if (!showRecipes && query.length >= 2 && viewModel.onlineFoodLookupAvailable) {
+            item {
+                OnlineFoodSearchPanel(
+                    query = query,
+                    state = onlineSearch,
+                    savedBarcodes = foods.filter { it.source == "OPEN_FOOD_FACTS" }.mapNotNull(FoodEntity::sourceId).toSet(),
+                    onSearch = viewModel::searchOnlineFoods,
+                    onSave = viewModel::saveOnlineFood,
+                )
+            }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -128,13 +162,14 @@ private fun FoodRow(food: FoodEntity, onArchive: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(food.name, fontWeight = FontWeight.Medium)
+                food.brand?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 Text(
                     "${food.servingLabel} · ${formatNumber(food.caloriesMilliKcal.fromMilli())} kcal · P ${formatNumber(food.proteinMilliGram.fromMilli())} · C ${formatNumber(food.carbsMilliGram.fromMilli())} · F ${formatNumber(food.fatMilliGram.fromMilli())}",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Text(food.source.replace('_', ' '), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Text(food.sourceLabel(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
-            if (food.isUserCreated) {
+            if (food.isUserCreated || food.source == "OPEN_FOOD_FACTS" || food.source.startsWith("USDA_FDC_")) {
                 IconButton(onClick = onArchive) { Icon(Icons.Default.Archive, contentDescription = "Archive ${food.name}") }
             }
         }
@@ -263,4 +298,23 @@ private fun formatNumber(value: Double): String = if (value == round(value)) {
     String.format(Locale.US, "%.0f", value)
 } else {
     String.format(Locale.US, "%.1f", value)
+}
+
+internal fun FoodEntity.sourceLabel(): String = when (source) {
+    "USDA_REFERENCE" -> "USDA reference"
+    "BRAND_LABEL" -> "Manufacturer label"
+    "OPEN_FOOD_FACTS" -> "Open Food Facts · community data"
+    "USER_CUSTOM" -> "Custom food"
+    else -> if (source.startsWith("USDA_FDC_")) {
+        "USDA FoodData Central · ${source.removePrefix("USDA_FDC_").replace('_', ' ').lowercase()}"
+    } else {
+        source.replace('_', ' ').lowercase().replaceFirstChar(Char::uppercase)
+    }
+}
+
+internal fun FoodEntity.matchesQuery(query: String): Boolean {
+    val tokens = query.trim().split(Regex("\\s+")).filter(String::isNotEmpty)
+    if (tokens.isEmpty()) return true
+    val searchable = listOfNotNull(brand, name).joinToString(" ")
+    return tokens.all { searchable.contains(it, ignoreCase = true) }
 }

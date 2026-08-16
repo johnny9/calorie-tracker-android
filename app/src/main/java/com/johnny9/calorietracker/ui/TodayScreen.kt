@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.johnny9.calorietracker.AppViewModel
 import com.johnny9.calorietracker.MacroGoals
+import com.johnny9.calorietracker.OnlineFoodSearchUiState
+import com.johnny9.calorietracker.UsdaFoodSearchUiState
 import com.johnny9.calorietracker.data.DiaryEntryEntity
 import com.johnny9.calorietracker.data.FoodEntity
 import com.johnny9.calorietracker.domain.RecipeSummary
@@ -60,6 +63,8 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
     val state by viewModel.today.collectAsState()
     val foods by viewModel.foods.collectAsState()
     val recipes by viewModel.recipes.collectAsState()
+    val onlineSearch by viewModel.onlineFoodSearch.collectAsState()
+    val usdaSearch by viewModel.usdaFoodSearch.collectAsState()
     var addToMeal by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
@@ -150,9 +155,16 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
             meal = meal,
             foods = foods,
             recipes = recipes,
+            onlineSearch = onlineSearch,
+            usdaSearch = usdaSearch,
+            onlineFoodLookupAvailable = viewModel.onlineFoodLookupAvailable,
             onDismiss = { addToMeal = null },
             onFood = { id, quantity -> viewModel.logFood(id, meal, quantity); addToMeal = null },
             onRecipe = { id, quantity -> viewModel.logRecipe(id, meal, quantity); addToMeal = null },
+            onUsdaFood = { id, quantity -> viewModel.logUsdaFood(id, meal, quantity); addToMeal = null },
+            onUsdaSearch = viewModel::searchUsdaFoods,
+            onOnlineSearch = viewModel::searchOnlineFoods,
+            onSaveOnlineFood = viewModel::saveOnlineFood,
         )
     }
 }
@@ -237,16 +249,27 @@ private fun AddEntryDialog(
     meal: String,
     foods: List<FoodEntity>,
     recipes: List<RecipeSummary>,
+    onlineSearch: OnlineFoodSearchUiState,
+    usdaSearch: UsdaFoodSearchUiState,
+    onlineFoodLookupAvailable: Boolean,
     onDismiss: () -> Unit,
     onFood: (String, Double) -> Unit,
     onRecipe: (String, Double) -> Unit,
+    onUsdaFood: (Long, Double) -> Unit,
+    onUsdaSearch: (String) -> Unit,
+    onOnlineSearch: (String) -> Unit,
+    onSaveOnlineFood: (String) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var quantityText by remember { mutableStateOf("1") }
     val quantity = quantityText.toDoubleOrNull()?.takeIf { it > 0 }
     val normalized = query.trim()
-    val visibleFoods = foods.filter { normalized.isEmpty() || it.name.contains(normalized, ignoreCase = true) }
+    val visibleFoods = foods.filter { it.matchesQuery(normalized) }
     val visibleRecipes = recipes.filter { normalized.isEmpty() || it.name.contains(normalized, ignoreCase = true) }
+
+    LaunchedEffect(normalized) {
+        onUsdaSearch(if (normalized.length >= 2) normalized else "")
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -256,12 +279,41 @@ private fun AddEntryDialog(
                 OutlinedTextField(query, { query = it }, label = { Text("Search foods and recipes") }, singleLine = true)
                 OutlinedTextField(quantityText, { quantityText = it }, label = { Text("Number of servings") }, singleLine = true)
                 LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                    if (normalized.length >= 2) {
+                        item {
+                            UsdaFoodSearchPanel(
+                                query = normalized,
+                                state = usdaSearch,
+                                savedFdcIds = foods.asSequence()
+                                    .filter { it.source.startsWith("USDA_FDC_") }
+                                    .mapNotNull { it.sourceId?.toLongOrNull() }
+                                    .toSet(),
+                                onSelect = { fdcId -> quantity?.let { onUsdaFood(fdcId, it) } },
+                                actionLabel = "Add",
+                                disableSaved = false,
+                                actionEnabled = quantity != null,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                            )
+                        }
+                    }
+                    if (normalized.length >= 2 && onlineFoodLookupAvailable) {
+                        item {
+                            OnlineFoodSearchPanel(
+                                query = normalized,
+                                state = onlineSearch,
+                                savedBarcodes = foods.filter { it.source == "OPEN_FOOD_FACTS" }.mapNotNull(FoodEntity::sourceId).toSet(),
+                                onSearch = onOnlineSearch,
+                                onSave = onSaveOnlineFood,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                            )
+                        }
+                    }
                     if (visibleFoods.isNotEmpty()) {
                         item { Text("Foods", fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp)) }
                         items(visibleFoods, key = FoodEntity::id) { food ->
                             EntryChoice(
-                                title = food.name,
-                                subtitle = "${food.servingLabel} · ${food.caloriesMilliKcal.fromMilli().roundToInt()} kcal · ${food.source.replace('_', ' ')}",
+                                title = food.brand?.let { "$it · ${food.name}" } ?: food.name,
+                                subtitle = "${food.servingLabel} · ${food.caloriesMilliKcal.fromMilli().roundToInt()} kcal · ${food.sourceLabel()}",
                                 enabled = quantity != null,
                                 onClick = { quantity?.let { onFood(food.id, it) } },
                             )

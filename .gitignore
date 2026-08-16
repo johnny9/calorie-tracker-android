@@ -1,5 +1,6 @@
 # Android / Gradle
 .gradle/
+.kotlin/
 build/
 **/build/
 local.properties
@@ -16,3 +17,11 @@ signing.properties
 .DS_Store
 Thumbs.db
 *.swp
+
+# Python catalog tooling
+__pycache__/
+*.py[cod]
+
+# The verified USDA pack is injected from an immutable GitHub release during
+# trusted builds; never commit the approximately 240 MB generated asset.
+app/src/main/assets/usda/usda-catalog-pack.jar

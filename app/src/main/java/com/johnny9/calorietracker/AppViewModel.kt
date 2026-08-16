@@ -10,6 +10,8 @@ import com.johnny9.calorietracker.data.DiaryEntryEntity
 import com.johnny9.calorietracker.data.FastingPeriodEntity
 import com.johnny9.calorietracker.data.FoodEntity
 import com.johnny9.calorietracker.data.TargetPlanEntity
+import com.johnny9.calorietracker.data.usda.UsdaCatalogSource
+import com.johnny9.calorietracker.data.usda.UsdaFoodSummary
 import com.johnny9.calorietracker.domain.DailyPoint
 import com.johnny9.calorietracker.domain.DayCompleteness
 import com.johnny9.calorietracker.domain.Nutrients
@@ -20,6 +22,7 @@ import com.johnny9.calorietracker.domain.TargetCalculator
 import com.johnny9.calorietracker.domain.TargetInput
 import com.johnny9.calorietracker.domain.fromMilli
 import com.johnny9.calorietracker.export.CsvExportService
+import com.johnny9.calorietracker.foodlookup.OnlineFoodCandidate
 import com.johnny9.calorietracker.health.HealthConnectManager
 import com.johnny9.calorietracker.health.HealthConnectState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +32,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
@@ -61,10 +67,29 @@ data class TrendsUiState(
     val windowDays: Int = 7,
 )
 
+data class OnlineFoodSearchUiState(
+    val query: String = "",
+    val isSearching: Boolean = false,
+    val results: List<OnlineFoodCandidate> = emptyList(),
+    val importingBarcode: String? = null,
+    val error: String? = null,
+)
+
+data class UsdaFoodSearchUiState(
+    val query: String = "",
+    val isSearching: Boolean = false,
+    val source: UsdaCatalogSource? = null,
+    val results: List<UsdaFoodSummary> = emptyList(),
+    val importingFdcId: Long? = null,
+    val error: String? = null,
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as CalorieTrackerApplication
     private val repository = app.repository
+    private val foodLookup = app.foodLookup
+    private val usdaCatalog = app.usdaCatalog
     private val exporter = CsvExportService(application, repository)
     private val healthManager = HealthConnectManager(application, repository)
 
@@ -72,6 +97,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val rollingWindowDays = MutableStateFlow(7)
     val message = MutableStateFlow<String?>(null)
     val isWorking = MutableStateFlow(false)
+    val onlineFoodSearch = MutableStateFlow(OnlineFoodSearchUiState())
+    val usdaFoodSearch = MutableStateFlow(UsdaFoodSearchUiState())
+    val onlineFoodLookupAvailable: Boolean get() = foodLookup.isAvailable
+    private var onlineSearchJob: Job? = null
+    private var usdaSearchJob: Job? = null
+    private var usdaImportJob: Job? = null
 
     val foods: StateFlow<List<FoodEntity>> = repository.foods.stateIn(
         viewModelScope,
@@ -194,6 +225,109 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createRecipe(name: String, servings: Double, quantities: Map<String, Double>) = launchAction("Recipe saved") {
         repository.createRecipe(name, servings, quantities)
+    }
+
+    fun searchOnlineFoods(rawQuery: String) {
+        val query = rawQuery.trim().replace(Regex("\\s+"), " ")
+        onlineSearchJob?.cancel()
+        onlineSearchJob = viewModelScope.launch {
+            onlineFoodSearch.value = OnlineFoodSearchUiState(query = query, isSearching = true)
+            try {
+                val results = foodLookup.search(query)
+                onlineFoodSearch.value = OnlineFoodSearchUiState(query = query, results = results)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                onlineFoodSearch.value = OnlineFoodSearchUiState(
+                    query = query,
+                    error = error.message ?: "Online food search failed",
+                )
+            }
+        }
+    }
+
+    fun searchUsdaFoods(rawQuery: String) {
+        val query = rawQuery.trim().replace(Regex("\\s+"), " ").take(80)
+        usdaSearchJob?.cancel()
+        if (query.length < 2) {
+            usdaFoodSearch.value = UsdaFoodSearchUiState(query = query)
+            return
+        }
+        usdaSearchJob = viewModelScope.launch {
+            usdaFoodSearch.value = UsdaFoodSearchUiState(query = query, isSearching = true)
+            try {
+                delay(150)
+                val result = usdaCatalog.search(query)
+                usdaFoodSearch.value = UsdaFoodSearchUiState(
+                    query = query,
+                    source = result.source,
+                    results = result.foods,
+                    error = result.error,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                usdaFoodSearch.value = UsdaFoodSearchUiState(
+                    query = query,
+                    error = error.message ?: "The offline USDA catalog could not be searched",
+                )
+            }
+        }
+    }
+
+    fun saveUsdaFood(fdcId: Long) = importUsdaFood(fdcId, "Food saved for offline use") { _, _ -> }
+
+    fun logUsdaFood(fdcId: Long, meal: String, quantity: Double) = importUsdaFood(fdcId, "Food logged") { foodId, _ ->
+        repository.logFood(selectedDate.value, meal, foodId, quantity)
+    }
+
+    private fun importUsdaFood(
+        fdcId: Long,
+        success: String,
+        afterCache: suspend (foodId: String, inserted: Boolean) -> Unit,
+    ) {
+        if (usdaImportJob?.isActive == true) return
+        usdaImportJob = viewModelScope.launch {
+            usdaFoodSearch.value = usdaFoodSearch.value.copy(importingFdcId = fdcId, error = null)
+            try {
+                val record = usdaCatalog.food(fdcId)
+                val inserted = repository.cacheUsdaFood(record)
+                afterCache("usda:$fdcId", inserted)
+                message.value = if (success == "Food saved for offline use" && !inserted) {
+                    "Saved food refreshed for offline use"
+                } else {
+                    success
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val detail = error.message ?: "Unable to import that USDA food"
+                usdaFoodSearch.value = usdaFoodSearch.value.copy(error = detail)
+                message.value = detail
+            } finally {
+                usdaFoodSearch.value = usdaFoodSearch.value.copy(importingFdcId = null)
+            }
+        }
+    }
+
+    fun saveOnlineFood(barcode: String) {
+        if (onlineFoodSearch.value.importingBarcode != null) return
+        viewModelScope.launch {
+            onlineFoodSearch.value = onlineFoodSearch.value.copy(importingBarcode = barcode, error = null)
+            try {
+                val product = foodLookup.product(barcode)
+                val inserted = repository.cacheOnlineFood(product)
+                message.value = if (inserted) "Food saved for offline use" else "Saved food refreshed for offline use"
+                onlineFoodSearch.value = onlineFoodSearch.value.copy(importingBarcode = null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                onlineFoodSearch.value = onlineFoodSearch.value.copy(
+                    importingBarcode = null,
+                    error = error.message ?: "Unable to save that food",
+                )
+            }
+        }
     }
 
     fun archiveFood(id: String) = launchAction("Food archived") { repository.archiveFood(id) }

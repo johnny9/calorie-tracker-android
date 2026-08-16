@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
@@ -24,8 +25,18 @@ interface TrackerDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertFoods(foods: List<FoodEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertFood(food: FoodEntity): Long
+
     @Upsert
     suspend fun upsertFood(food: FoodEntity)
+
+    @Transaction
+    suspend fun saveOnlineFood(food: FoodEntity): Boolean {
+        val inserted = insertFood(food) != -1L
+        if (!inserted) upsertFood(food)
+        return inserted
+    }
 
     @Query("UPDATE foods SET isArchived = 1 WHERE id = :id")
     suspend fun archiveFood(id: String)

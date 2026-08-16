@@ -1,5 +1,6 @@
 package com.johnny9.calorietracker.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -19,6 +20,11 @@ data class FoodEntity(
     val fiberMilliGram: Long,
     val source: String,
     val sourceId: String? = null,
+    val sourceRevision: String? = null,
+    val sourceUpdatedAtEpochMs: Long? = null,
+    val sourceCompleteness: Double? = null,
+    val sourceWarningCount: Int? = null,
+    @ColumnInfo(defaultValue = "'UNSPECIFIED'") val dataQuality: String = "UNSPECIFIED",
     val isArchived: Boolean = false,
     val isUserCreated: Boolean = false,
     val createdAtEpochMs: Long,

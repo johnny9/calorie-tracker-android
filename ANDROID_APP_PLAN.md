@@ -2,7 +2,7 @@
 
 Product specification and implementation plan, researched 2026-08-15.
 
-Implementation note (2026-08-16): the repository begins with a usable `0.1` vertical slice covering the offline diary, custom foods, serving-count recipes, fixed/calculated targets, Health Connect active calories, correct rolling windows, manual fasting, and CSV ZIP export. The rest of the version-1 scope below remains a staged roadmap rather than a claim about the first artifact.
+Implementation note (2026-08-16): the repository begins with a usable `0.1` vertical slice covering the offline diary, custom foods, serving-count recipes, fixed/calculated targets, Health Connect active calories, correct rolling windows, manual fasting, CSV ZIP export, and explicit Open Food Facts packaged-food search with validated offline caching. The rest of the version-1 scope below remains a staged roadmap rather than a claim about the first artifact.
 
 ## 1. Product goal
 
@@ -368,11 +368,12 @@ Requirements:
 
 ### Recommended version-1 approach
 
-1. Generate a compact, versioned SQLite seed pack from USDA FoodData Central's CC0 Foundation/FNDDS/common-food data during the build or release pipeline.
-2. Bundle a useful common-food subset with the APK/App Bundle or download a signed data pack on first launch if size requires it.
-3. Copy selected seed items into/cache them through Room so favorites and recent foods remain fast.
-4. Use optional online barcode lookup from Open Food Facts for branded products and cache successful results locally.
-5. Keep all diary, health, target, and fasting data out of food-lookup requests.
+1. Generate a versioned SQLite/FTS4 pack from USDA FoodData Central's dated CC0 bulk data in a manual release workflow, not during every Android build.
+2. Keep name/brand/GTIN indexes and serving summaries directly queryable while storing the complete native source record for each indexed product in independently compressed random-access blocks. Deterministically select the newest record when source rows share a normalized GTIN.
+3. Sign and publish the catalog as an immutable replaceable artifact, select it by an exact repository release tag, and embed the same verified bytes in trusted APKs. The small fallback food set keeps debug builds useful when no pack is installed.
+4. Copy selected catalog items into/cache them through Room so recipes, diary snapshots, and export remain independent from later catalog replacements.
+5. Use an explicit, rate-limited Open Food Facts name search and product-label lookup as an optional fallback, then cache only user-selected results locally. Barcode scanning can reuse the same exact-product path later.
+6. Keep all diary, health, target, and fasting data out of food-lookup requests.
 
 Why not embed a USDA API key in the APK: FoodData Central requires an API key and explicitly requires that it remain secret. A future name-search service would therefore need a minimal stateless proxy, or the app should rely on periodically published offline packs. The MVP should prefer data packs so no application backend is required.
 

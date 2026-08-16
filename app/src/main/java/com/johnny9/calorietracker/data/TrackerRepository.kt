@@ -6,10 +6,13 @@ import com.johnny9.calorietracker.domain.RecipeSummary
 import com.johnny9.calorietracker.domain.TargetCalculator
 import com.johnny9.calorietracker.domain.TargetInput
 import com.johnny9.calorietracker.domain.toMilli
+import com.johnny9.calorietracker.data.usda.UsdaFoodRecord
+import com.johnny9.calorietracker.foodlookup.OnlineFoodProduct
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToLong
 
@@ -40,7 +43,7 @@ class TrackerRepository(private val database: TrackerDatabase) {
 
     suspend fun initialize() {
         val now = System.currentTimeMillis()
-        if (dao.foodCount() == 0) dao.insertFoods(BundledFoods.rows(now))
+        dao.insertFoods(BundledFoods.rows(now))
         if (dao.allTargets().isEmpty()) {
             val today = LocalDate.now()
             dao.upsertTarget(
@@ -101,6 +104,7 @@ class TrackerRepository(private val database: TrackerDatabase) {
                 fatMilliGram = fat.toMilli(),
                 fiberMilliGram = fiber.toMilli(),
                 source = "USER_CUSTOM",
+                dataQuality = "USER_ENTERED",
                 isUserCreated = true,
                 createdAtEpochMs = System.currentTimeMillis(),
             ),
@@ -109,6 +113,64 @@ class TrackerRepository(private val database: TrackerDatabase) {
 
     suspend fun archiveFood(id: String) = dao.archiveFood(id)
     suspend fun archiveRecipe(id: String) = dao.archiveRecipe(id)
+
+    suspend fun cacheOnlineFood(product: OnlineFoodProduct): Boolean {
+        val row = FoodEntity(
+            id = "off:${product.barcode}",
+            name = product.name,
+            brand = product.brand,
+            servingLabel = product.servingLabel,
+            servingGramsMilli = product.servingQuantity.takeIf { product.servingUnit == "g" }?.toMilli(),
+            caloriesMilliKcal = product.calories.toMilli(),
+            proteinMilliGram = product.protein.toMilli(),
+            carbsMilliGram = product.carbs.toMilli(),
+            fatMilliGram = product.fat.toMilli(),
+            fiberMilliGram = product.fiber.toMilli(),
+            source = "OPEN_FOOD_FACTS",
+            sourceId = product.barcode,
+            sourceRevision = product.sourceRevision,
+            sourceUpdatedAtEpochMs = product.sourceUpdatedAtEpochMs,
+            sourceCompleteness = product.completeness,
+            sourceWarningCount = product.warningCount,
+            dataQuality = if (product.warningCount == 0) "COMMUNITY_NO_REPORTED_ERRORS" else "COMMUNITY_WITH_WARNINGS",
+            isUserCreated = false,
+            createdAtEpochMs = System.currentTimeMillis(),
+        )
+        return dao.saveOnlineFood(row)
+    }
+
+    suspend fun cacheUsdaFood(record: UsdaFoodRecord): Boolean {
+        val summary = record.summary
+        require(summary.hasImportableNutrition) { "That USDA record has missing or invalid nutrition values" }
+        val dataType = record.dataType.uppercase(Locale.ROOT)
+            .replace(Regex("[^A-Z0-9]+"), "_")
+            .trim('_')
+            .take(32)
+            .ifEmpty { "UNKNOWN" }
+        val presentNutrients = listOf(summary.calories, summary.protein, summary.carbs, summary.fat, summary.fiber).count { it != null }
+        val row = FoodEntity(
+            id = "usda:${summary.fdcId}",
+            name = summary.name,
+            brand = summary.brand,
+            servingLabel = summary.servingLabel,
+            servingGramsMilli = record.servingGrams?.toMilli(),
+            caloriesMilliKcal = requireNotNull(summary.calories).toMilli(),
+            proteinMilliGram = requireNotNull(summary.protein).toMilli(),
+            carbsMilliGram = requireNotNull(summary.carbs).toMilli(),
+            fatMilliGram = requireNotNull(summary.fat).toMilli(),
+            fiberMilliGram = (summary.fiber ?: 0.0).toMilli(),
+            source = "USDA_FDC_$dataType",
+            sourceId = summary.fdcId.toString(),
+            sourceRevision = record.sourceRevision,
+            sourceUpdatedAtEpochMs = record.sourceUpdatedAtEpochMs,
+            sourceCompleteness = presentNutrients / 5.0,
+            sourceWarningCount = if (summary.hasCompleteNutrition) 0 else 1,
+            dataQuality = if (dataType == "BRANDED") "MANUFACTURER_LABEL" else "USDA_REFERENCE",
+            isUserCreated = false,
+            createdAtEpochMs = System.currentTimeMillis(),
+        )
+        return dao.saveOnlineFood(row)
+    }
 
     suspend fun createRecipe(name: String, servings: Double, foodQuantities: Map<String, Double>) {
         require(name.isNotBlank()) { "Recipe name is required" }

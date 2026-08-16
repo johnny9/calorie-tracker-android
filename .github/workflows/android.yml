@@ -5,9 +5,17 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      catalog_release_tag:
+        description: Exact approved USDA catalog tag (defaults to repository variable USDA_CATALOG_RELEASE_TAG)
+        required: false
+        type: string
 
 permissions:
   contents: read
+
+env:
+  OPEN_FOOD_FACTS_CONTACT_EMAIL: ${{ vars.OPEN_FOOD_FACTS_CONTACT_EMAIL }}
 
 jobs:
   verify:
@@ -67,6 +75,112 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Download and verify pinned USDA catalog
+        id: catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_CATALOG_TAG: ${{ github.event.inputs.catalog_release_tag }}
+          PINNED_CATALOG_TAG: ${{ vars.USDA_CATALOG_RELEASE_TAG }}
+        shell: bash
+        run: |
+          catalog_tag="${DISPATCH_CATALOG_TAG:-$PINNED_CATALOG_TAG}"
+          if [[ ! "$catalog_tag" =~ ^usda-catalog-v[0-9]{4}-[0-9]{2}-[0-9]{2}-r[1-9][0-9]{0,17}$ ]]; then
+            echo "::error::Set USDA_CATALOG_RELEASE_TAG to an exact approved tag such as usda-catalog-v2026-04-30-r1"
+            exit 1
+          fi
+
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$catalog_tag")"
+          test "$(jq -r .draft <<< "$release_json")" = "false"
+          test "$(jq -r .tag_name <<< "$release_json")" = "$catalog_tag"
+
+          catalog_dir="$RUNNER_TEMP/usda-catalog"
+          install -d -m 700 "$catalog_dir"
+          gh release download "$catalog_tag" --repo "$GITHUB_REPOSITORY" \
+            --dir "$catalog_dir" \
+            --pattern usda-catalog-pack.jar \
+            --pattern usda-catalog-pack.jar.sha256
+          test -f "$catalog_dir/usda-catalog-pack.jar"
+          test -f "$catalog_dir/usda-catalog-pack.jar.sha256"
+          (
+            cd "$catalog_dir"
+            sha256sum --check --strict usda-catalog-pack.jar.sha256
+          )
+
+          catalog_jar="$catalog_dir/usda-catalog-pack.jar"
+          verify_report="$(jarsigner -verify -verbose -certs "$catalog_jar" 2>&1)"
+          printf '%s\n' "$verify_report"
+          grep -Fq 'jar verified.' <<< "$verify_report"
+
+          certificate_report="$(keytool -printcert -jarfile "$catalog_jar")"
+          printf '%s\n' "$certificate_report"
+          actual="$(printf '%s\n' "$certificate_report" | sed -nE '/SHA256:/ { s/.*SHA256:[[:space:]]*//; p; q; }' | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          expected="$(tr '[:lower:]' '[:upper:]' < signing-cert-sha256.txt | tr -d ':[:space:]')"
+          [[ "$actual" =~ ^[0-9A-F]{64}$ ]]
+          [[ "$expected" =~ ^[0-9A-F]{64}$ ]]
+          test "$actual" = "$expected"
+
+          for entry in \
+            META-INF/MANIFEST.MF \
+            usda-catalog.sqlite \
+            usda-catalog-manifest.json \
+            SHA256SUMS; do
+            count="$(zipinfo -1 "$catalog_jar" | grep -Fxc "$entry" || true)"
+            test "$count" = "1"
+          done
+
+          install -d "$catalog_dir/contents"
+          unzip -q "$catalog_jar" \
+            usda-catalog.sqlite usda-catalog-manifest.json SHA256SUMS \
+            -d "$catalog_dir/contents"
+          (
+            cd "$catalog_dir/contents"
+            sha256sum --check --strict SHA256SUMS
+          )
+
+          catalog_sqlite_sha256="$(sha256sum "$catalog_dir/contents/usda-catalog.sqlite" | cut -d ' ' -f 1)"
+          tag_version="${catalog_tag#usda-catalog-v}"
+          catalog_revision="${tag_version##*-r}"
+          catalog_release="${tag_version%-r*}"
+          python3 - \
+            "$catalog_jar" \
+            "$catalog_sqlite_sha256" \
+            "$catalog_release" \
+            "$catalog_revision" <<'PY'
+          import sys
+          import zipfile
+
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              physical_lines = archive.read("META-INF/MANIFEST.MF").splitlines()
+          attributes: dict[str, str] = {}
+          current: str | None = None
+          for physical_line in physical_lines:
+              line = physical_line.decode("utf-8")
+              if line.startswith(" "):
+                  if current is None:
+                      raise SystemExit("JAR manifest starts with an invalid continuation")
+                  attributes[current] += line[1:]
+              elif ": " in line:
+                  current, value = line.split(": ", 1)
+                  attributes[current] = value
+              elif line:
+                  raise SystemExit(f"Invalid JAR manifest line: {line!r}")
+          if attributes.get("Catalog-Schema-Version") != "1":
+              raise SystemExit("Catalog-Schema-Version is not 1")
+          if attributes.get("Catalog-SHA-256") != sys.argv[2]:
+              raise SystemExit("Catalog-SHA-256 does not match the embedded database")
+          if attributes.get("Catalog-Release") != sys.argv[3]:
+              raise SystemExit("Catalog-Release does not match the release tag")
+          if attributes.get("Catalog-Revision") != sys.argv[4]:
+              raise SystemExit("Catalog-Revision does not match the release tag")
+          PY
+
+          catalog_sha256="$(sha256sum "$catalog_jar" | cut -d ' ' -f 1)"
+          install -d app/src/main/assets/usda
+          install -m 644 "$catalog_jar" app/src/main/assets/usda/usda-catalog-pack.jar
+          echo "CATALOG_RELEASE_TAG=$catalog_tag" >> "$GITHUB_ENV"
+          echo "CATALOG_PACK_SHA256=$catalog_sha256" >> "$GITHUB_ENV"
+          echo "catalog_sha256=$catalog_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
@@ -133,8 +247,14 @@ jobs:
             cd dist
             sha256sum calorie-tracker-continuous.apk > SHA256SUMS
           )
-          printf 'versionCode=%s\nversionName=%s\ncommit=%s\n' \
-            "$VERSION_CODE" "$VERSION_NAME" "$GITHUB_SHA" > dist/BUILD_INFO.txt
+          embedded_catalog="$RUNNER_TEMP/embedded-usda-catalog-pack.jar"
+          unzip -p dist/calorie-tracker-continuous.apk \
+            assets/usda/usda-catalog-pack.jar > "$embedded_catalog"
+          test "$(sha256sum "$embedded_catalog" | cut -d ' ' -f 1)" = "$CATALOG_PACK_SHA256"
+          printf 'versionCode=%s\nversionName=%s\ncommit=%s\ncatalogReleaseTag=%s\ncatalogPackSha256=%s\n' \
+            "$VERSION_CODE" "$VERSION_NAME" "$GITHUB_SHA" \
+            "$CATALOG_RELEASE_TAG" "$CATALOG_PACK_SHA256" \
+            > dist/BUILD_INFO.txt
 
       - name: Upload immutable signed artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
