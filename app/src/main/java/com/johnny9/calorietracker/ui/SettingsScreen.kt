@@ -112,12 +112,16 @@ fun SettingsScreen(
                     SettingsNumberField("Age (years)", age) { age = it }
                     SettingsNumberField("Height (cm)", height) { height = it }
                     SettingsNumberField("Weight (kg)", weight) { weight = it }
-                    Text("Mifflin–St Jeor equation coefficient")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = coefficient == 5.0, onClick = { coefficient = 5.0 }, label = { Text("+5") })
-                        FilterChip(selected = coefficient == -161.0, onClick = { coefficient = -161.0 }, label = { Text("−161") })
+                    Text("Mifflin–St Jeor formula")
+                    Text(
+                        "This estimate uses a sex-specific equation term. Choose the formula matching the sex used for the calculation, or enter a measured BMR below to bypass it.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(selected = coefficient == 5.0, onClick = { coefficient = 5.0 }, label = { Text("Male formula (+5)") })
+                        FilterChip(selected = coefficient == -161.0, onClick = { coefficient = -161.0 }, label = { Text("Female formula (−161)") })
                     }
-                    SettingsNumberField("Custom BMR (optional)", customBmr) { customBmr = it }
+                    SettingsNumberField("Measured or clinician-provided BMR (optional)", customBmr) { customBmr = it }
                     preview?.let {
                         Text(String.format(Locale.US, "BMI %.1f · BMR %.0f kcal/day", it.bmi, it.bmrKcal), fontWeight = FontWeight.Medium)
                     }
@@ -173,7 +177,7 @@ fun SettingsScreen(
                     when {
                         health.availability != HealthAvailability.AVAILABLE -> OutlinedButton(onClick = {}, enabled = false) { Text("Health Connect unavailable") }
                         !health.hasPermission -> OutlinedButton(onClick = onRequestHealthPermission) { Text("Grant active-calorie access") }
-                        else -> OutlinedButton(onClick = viewModel::syncHealth) { Text("Sync selected day") }
+                        else -> OutlinedButton(onClick = viewModel::syncHealth) { Text("Sync last 30 days") }
                     }
                 }
             }

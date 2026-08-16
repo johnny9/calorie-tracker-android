@@ -110,7 +110,11 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
                     SummaryMetric("Remaining", state.remainingMilliKcal, Modifier.weight(1f))
                 }
                 Text(
-                    "Net = intake − active calories. Day status: ${state.completeness.name.lowercase().replace('_', ' ')}",
+                    if (state.activeMilliKcal == null) {
+                        "Active calories and Net are unavailable until this day is synced. Day status: ${state.completeness.name.lowercase().replace('_', ' ')}"
+                    } else {
+                        "Net = intake − active calories. Day status: ${state.completeness.name.lowercase().replace('_', ' ')}"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -154,16 +158,16 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
 }
 
 @Composable
-private fun SummaryMetric(label: String, milliKcal: Long, modifier: Modifier = Modifier) {
+private fun SummaryMetric(label: String, milliKcal: Long?, modifier: Modifier = Modifier) {
     Card(modifier) {
         Column(Modifier.padding(12.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium)
             Text(
-                String.format(Locale.US, "%.0f", milliKcal.fromMilli()),
+                milliKcal?.let { String.format(Locale.US, "%.0f", it.fromMilli()) } ?: "—",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
-            Text("kcal", style = MaterialTheme.typography.bodySmall)
+            Text(if (milliKcal == null) "sync needed" else "kcal", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

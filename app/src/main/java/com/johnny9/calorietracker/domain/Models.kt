@@ -39,12 +39,13 @@ enum class DayCompleteness { MISSING, PARTIAL, COMPLETE, FASTED_ZERO }
 data class DailyPoint(
     val date: LocalDate,
     val intakeMilliKcal: Long,
-    val activeMilliKcal: Long,
+    val activeMilliKcal: Long?,
     val completeness: DayCompleteness,
 ) {
-    val netMilliKcal: Long get() = intakeMilliKcal - activeMilliKcal
+    val netMilliKcal: Long? get() = activeMilliKcal?.let { intakeMilliKcal - it }
     val isEligible: Boolean
-        get() = completeness == DayCompleteness.COMPLETE || completeness == DayCompleteness.FASTED_ZERO
+        get() = netMilliKcal != null &&
+            (completeness == DayCompleteness.COMPLETE || completeness == DayCompleteness.FASTED_ZERO)
 }
 
 data class RollingResult(

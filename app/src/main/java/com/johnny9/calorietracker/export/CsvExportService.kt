@@ -98,16 +98,20 @@ class CsvExportService(
         return dates.map { date ->
             val intake = diary.filter { it.localDate == date }.sumOf { it.caloriesMilliKcal }
             val activeRow = activityByDate[date]
-            val active = if (target?.useHealthConnect == true) activeRow?.activeCaloriesMilliKcal ?: 0 else 0
             val dayState = stateByDate[date]
             val activityKnown = target?.useHealthConnect != true || (activeRow?.isKnown == true && !activeRow.isStale)
+            val active = when {
+                target?.useHealthConnect != true -> 0L
+                activityKnown -> activeRow?.activeCaloriesMilliKcal
+                else -> null
+            }
             val completeness = when {
                 dayState?.isComplete == true && activityKnown && dayState.intentionalZero && intake == 0L -> DayCompleteness.FASTED_ZERO
                 dayState?.isComplete == true && activityKnown -> DayCompleteness.COMPLETE
                 intake != 0L || dayState != null || activeRow != null -> DayCompleteness.PARTIAL
                 else -> DayCompleteness.MISSING
             }
-            listOf("1", date, intake.fromMilli(), active.fromMilli(), (intake - active).fromMilli(), completeness.name)
+            listOf("1", date, intake.fromMilli(), active?.fromMilli(), active?.let { (intake - it).fromMilli() }, completeness.name)
         }
     }
 }

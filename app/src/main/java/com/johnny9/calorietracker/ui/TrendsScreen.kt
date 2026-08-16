@@ -97,8 +97,8 @@ fun TrendsScreen(viewModel: AppViewModel, padding: PaddingValues) {
 @Composable
 private fun NetBarChart(points: List<DailyPoint>) {
     val eligible = points.filter(DailyPoint::isEligible)
-    val minValue = min(0f, eligible.minOfOrNull { it.netMilliKcal.fromMilli().toFloat() } ?: 0f)
-    val maxValue = max(0f, eligible.maxOfOrNull { it.netMilliKcal.fromMilli().toFloat() } ?: 0f)
+    val minValue = min(0f, eligible.minOfOrNull { requireNotNull(it.netMilliKcal).fromMilli().toFloat() } ?: 0f)
+    val maxValue = max(0f, eligible.maxOfOrNull { requireNotNull(it.netMilliKcal).fromMilli().toFloat() } ?: 0f)
     val range = maxValue - minValue
     val safeRange = if (range == 0f) 1f else range
     val completeColor = MaterialTheme.colorScheme.primary
@@ -120,7 +120,7 @@ private fun NetBarChart(points: List<DailyPoint>) {
                     cap = StrokeCap.Round,
                 )
             } else {
-                val value = point.netMilliKcal.fromMilli().toFloat()
+                val value = requireNotNull(point.netMilliKcal).fromMilli().toFloat()
                 val y = size.height * ((maxValue - value) / safeRange)
                 val top = min(y, baseline)
                 val barHeight = max(abs(y - baseline), 5f)
@@ -149,11 +149,21 @@ private fun DailyTrendRow(point: DailyPoint) {
                 Text(point.completeness.name.lowercase().replace('_', ' '), color = statusColor, style = MaterialTheme.typography.bodySmall)
             }
             Column {
-                Text(String.format(Locale.US, "Net %.0f kcal", point.netMilliKcal.fromMilli()), fontWeight = FontWeight.Bold)
-                Text(
-                    String.format(Locale.US, "%.0f in − %.0f active", point.intakeMilliKcal.fromMilli(), point.activeMilliKcal.fromMilli()),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                val net = point.netMilliKcal
+                val active = point.activeMilliKcal
+                if (net == null || active == null) {
+                    Text("Net —", fontWeight = FontWeight.Bold)
+                    Text(
+                        String.format(Locale.US, "%.0f in · activity unavailable", point.intakeMilliKcal.fromMilli()),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    Text(String.format(Locale.US, "Net %.0f kcal", net.fromMilli()), fontWeight = FontWeight.Bold)
+                    Text(
+                        String.format(Locale.US, "%.0f in − %.0f active", point.intakeMilliKcal.fromMilli(), active.fromMilli()),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
     }

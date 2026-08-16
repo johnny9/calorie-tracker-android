@@ -50,4 +50,15 @@ class RollingWindowCalculatorTest {
         assertNull(result.averageNetMilliKcal)
         assertEquals(0L, result.knownTotalNetMilliKcal)
     }
+
+    @Test
+    fun `unknown activity never becomes a zero backed net observation`() {
+        val point = DailyPoint(day1, 1_500_000, null, DayCompleteness.COMPLETE)
+        val result = RollingWindowCalculator.calculate(listOf(point), day1, day1, 7)
+
+        assertNull(point.netMilliKcal)
+        assertEquals(false, point.isEligible)
+        assertNull(result.averageNetMilliKcal)
+        assertEquals(0, result.eligibleDays)
+    }
 }

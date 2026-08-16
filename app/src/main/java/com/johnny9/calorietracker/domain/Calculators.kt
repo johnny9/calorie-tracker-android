@@ -55,7 +55,7 @@ object RollingWindowCalculator {
         val eligible = (0 until elapsed).mapNotNull { offset ->
             byDate[windowStart.plusDays(offset.toLong())]?.takeIf(DailyPoint::isEligible)
         }
-        val total = eligible.sumOf(DailyPoint::netMilliKcal)
+        val total = eligible.sumOf { requireNotNull(it.netMilliKcal) }
         val average = if (eligible.isEmpty()) null else (total.toDouble() / eligible.size).roundToLong()
         return RollingResult(average, total, eligible.size, elapsed, windowDays)
     }

@@ -43,7 +43,7 @@ data class MacroGoals(
 data class TodayUiState(
     val entries: List<DiaryEntryEntity> = emptyList(),
     val nutrients: Nutrients = Nutrients(),
-    val activeMilliKcal: Long = 0,
+    val activeMilliKcal: Long? = 0,
     val targetMilliKcal: Long = 0,
     val isDayComplete: Boolean = false,
     val completeness: DayCompleteness = DayCompleteness.MISSING,
@@ -51,7 +51,7 @@ data class TodayUiState(
     val targetConfigured: Boolean = false,
 ) {
     val intakeMilliKcal get() = nutrients.caloriesMilliKcal
-    val netMilliKcal get() = intakeMilliKcal - activeMilliKcal
+    val netMilliKcal get() = activeMilliKcal?.let { intakeMilliKcal - it }
     val remainingMilliKcal get() = targetMilliKcal - intakeMilliKcal
 }
 
@@ -106,7 +106,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         TodayUiState(
             entries = rows,
             nutrients = nutrients,
-            activeMilliKcal = if (plan?.useHealthConnect == true) activityRow?.activeCaloriesMilliKcal ?: 0 else 0,
+            activeMilliKcal = when {
+                plan?.useHealthConnect != true -> 0
+                activityKnown -> activityRow?.activeCaloriesMilliKcal
+                else -> null
+            },
             targetMilliKcal = plan?.targetCaloriesMilliKcal ?: 0,
             isDayComplete = state?.isComplete == true,
             completeness = completeness,
@@ -144,7 +148,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             DailyPoint(
                 date = date,
                 intakeMilliKcal = intake,
-                activeMilliKcal = if (plan?.useHealthConnect == true) activityRow?.activeCaloriesMilliKcal ?: 0 else 0,
+                activeMilliKcal = when {
+                    plan?.useHealthConnect != true -> 0
+                    activityKnown -> activityRow?.activeCaloriesMilliKcal
+                    else -> null
+                },
                 completeness = completeness(rows, state, activityRow, activityKnown),
             )
         }
@@ -237,9 +245,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (healthState.value.hasPermission) syncHealth()
     }
 
-    fun syncHealth() = launchAction("Activity synced") {
+    fun syncHealth() = launchAction("Last 30 days of activity synced") {
         val zone = target.value?.homeTimeZoneId?.let(ZoneId::of) ?: ZoneId.systemDefault()
-        healthManager.sync(selectedDate.value, zone).getOrThrow()
+        val end = selectedDate.value
+        healthManager.syncRange(end.minusDays(29), end, zone).getOrThrow()
     }
 
     fun startFast(hours: Int?) = launchAction("Fast started") { repository.startFast(hours) }

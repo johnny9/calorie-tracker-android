@@ -48,10 +48,26 @@ class HealthConnectManager(
         )
     }
 
-    suspend fun sync(date: LocalDate, zoneId: ZoneId): Result<Double> {
+    suspend fun syncRange(startDate: LocalDate, endDate: LocalDate, zoneId: ZoneId): Result<Int> {
+        require(!startDate.isAfter(endDate)) { "Activity sync start must not be after its end" }
         refreshStatus()
         if (!state.value.hasPermission) return Result.failure(IllegalStateException("Health Connect permission is not granted"))
         return runCatching {
+            var current = startDate
+            var synced = 0
+            while (!current.isAfter(endDate)) {
+                syncDay(current, zoneId)
+                synced += 1
+                current = current.plusDays(1)
+            }
+            synced
+        }.onFailure {
+            mutableState.value = state.value.copy(message = "Activity sync failed: ${it.message ?: "unknown error"}")
+        }
+    }
+
+    private suspend fun syncDay(date: LocalDate, zoneId: ZoneId) {
+        runCatching {
             val start = date.atStartOfDay(zoneId).toInstant()
             val end = date.plusDays(1).atStartOfDay(zoneId).toInstant()
             val metric = ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL
@@ -65,11 +81,9 @@ class HealthConnectManager(
             // Connect's known-zero result for this interval.
             val calories = result[metric]?.inKilocalories ?: 0.0
             repository.upsertActivity(date, calories, "HEALTH_CONNECT", known = true)
-            calories
         }.onFailure {
             repository.markActivitySyncFailed(date)
-            mutableState.value = state.value.copy(message = "Activity sync failed: ${it.message ?: "unknown error"}")
-        }
+        }.getOrThrow()
     }
 
     private fun availability(): HealthAvailability = when (HealthConnectClient.getSdkStatus(context)) {
