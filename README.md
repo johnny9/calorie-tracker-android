@@ -9,8 +9,8 @@ This repository currently contains a usable `0.1` vertical slice:
 - Explicitly search Open Food Facts for packaged foods, validate a selected serving, and save it for later offline use.
 - Create and archive custom foods.
 - Combine foods into serving-count recipes.
-- Log immutable food/recipe snapshots into breakfast, lunch, dinner, or snacks.
-- Configure fixed or Mifflin–St Jeor-derived calories, BMI context, and percent/fixed-gram macros.
+- Log source-independent food/recipe snapshots into breakfast, lunch, dinner, or snacks, and edit their serving quantities later.
+- Configure fixed or Mifflin–St Jeor-derived calories, BMI context, and percent/fixed-gram macros using Metric or US body measurements.
 - Optionally sync the selected 30-day range of daily active calories from Health Connect without double-counting exercise sessions.
 - See daily intake, activity, net calories, target, remaining calories, the latest seven days, and rolling 3–30 day net averages. Unknown or stale activity keeps Net unavailable instead of silently becoming zero.
 - Explicitly complete days so early or missing dates are excluded instead of treated as zero.

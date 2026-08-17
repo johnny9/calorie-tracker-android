@@ -81,8 +81,8 @@ class CsvExportService(
                 )
                 zip.csv(
                     "targets.csv",
-                    listOf("schema_version", "id", "effective_from", "tracking_start", "home_time_zone", "age_years", "height_cm", "weight_kg", "equation_coefficient", "custom_bmr_kcal", "target_mode", "fixed_target_kcal", "activity_factor", "goal_adjustment_kcal", "target_kcal", "macro_mode", "protein_target", "carbs_target", "fat_target", "health_connect"),
-                    targets.map { listOf(EXPORT_SCHEMA_VERSION, it.id, it.effectiveFrom, it.trackingStartDate, it.homeTimeZoneId, it.ageYears, it.heightMilliCm.fromMilli(), it.weightMilliKg.fromMilli(), it.equationCoefficient, it.customBmrMilliKcal?.fromMilli(), it.targetMode, it.fixedTargetMilliKcal?.fromMilli(), it.activityFactor, it.goalAdjustmentMilliKcal.fromMilli(), it.targetCaloriesMilliKcal.fromMilli(), it.macroMode, it.proteinTarget, it.carbsTarget, it.fatTarget, it.useHealthConnect) },
+                    listOf("schema_version", "id", "effective_from", "tracking_start", "home_time_zone", "unit_system", "age_years", "height_cm", "weight_kg", "equation_coefficient", "custom_bmr_kcal", "target_mode", "fixed_target_kcal", "activity_factor", "goal_adjustment_kcal", "target_kcal", "macro_mode", "protein_target", "carbs_target", "fat_target", "health_connect"),
+                    targets.map { listOf(EXPORT_SCHEMA_VERSION, it.id, it.effectiveFrom, it.trackingStartDate, it.homeTimeZoneId, it.unitSystem, it.ageYears, it.heightMilliCm.fromMilli(), it.weightMilliKg.fromMilli(), it.equationCoefficient, it.customBmrMilliKcal?.fromMilli(), it.targetMode, it.fixedTargetMilliKcal?.fromMilli(), it.activityFactor, it.goalAdjustmentMilliKcal.fromMilli(), it.targetCaloriesMilliKcal.fromMilli(), it.macroMode, it.proteinTarget, it.carbsTarget, it.fatTarget, it.useHealthConnect) },
                 )
                 zip.csv(
                     "fasting_periods.csv",
@@ -128,7 +128,7 @@ class CsvExportService(
     }
 }
 
-internal const val EXPORT_SCHEMA_VERSION = "2"
+internal const val EXPORT_SCHEMA_VERSION = "3"
 
 internal fun sourceUrl(food: FoodEntity): String? = when (food.source) {
     "USDA_REFERENCE" -> "https://fdc.nal.usda.gov/"

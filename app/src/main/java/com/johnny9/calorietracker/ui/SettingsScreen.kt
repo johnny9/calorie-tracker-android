@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.johnny9.calorietracker.AppViewModel
 import com.johnny9.calorietracker.domain.TargetCalculator
 import com.johnny9.calorietracker.domain.TargetInput
+import com.johnny9.calorietracker.domain.UnitConverter
+import com.johnny9.calorietracker.domain.UnitSystem
 import com.johnny9.calorietracker.domain.fromMilli
 import com.johnny9.calorietracker.health.HealthAvailability
 import java.util.Locale
@@ -46,8 +48,12 @@ fun SettingsScreen(
     val health by viewModel.healthState.collectAsState()
 
     var age by remember { mutableStateOf("35") }
-    var height by remember { mutableStateOf("170") }
-    var weight by remember { mutableStateOf("70") }
+    var unitSystem by remember { mutableStateOf(UnitSystem.METRIC) }
+    var heightCm by remember { mutableStateOf("170") }
+    var heightFeet by remember { mutableStateOf("5") }
+    var heightInches by remember { mutableStateOf("6.93") }
+    var weightKg by remember { mutableStateOf("70") }
+    var weightPounds by remember { mutableStateOf("154.32") }
     var coefficient by remember { mutableDoubleStateOf(-161.0) }
     var customBmr by remember { mutableStateOf("") }
     var fixedMode by remember { mutableStateOf(true) }
@@ -63,8 +69,15 @@ fun SettingsScreen(
     LaunchedEffect(plan?.updatedAtEpochMs) {
         plan?.let {
             age = it.ageYears.toString()
-            height = cleanNumber(it.heightMilliCm.fromMilli())
-            weight = cleanNumber(it.weightMilliKg.fromMilli())
+            unitSystem = UnitSystem.fromStorage(it.unitSystem)
+            val canonicalHeightCm = it.heightMilliCm.fromMilli()
+            val canonicalWeightKg = it.weightMilliKg.fromMilli()
+            val usHeight = UnitConverter.centimetersToUsHeight(canonicalHeightCm)
+            heightCm = cleanNumber(canonicalHeightCm)
+            heightFeet = usHeight.feet.toString()
+            heightInches = cleanNumber(usHeight.inches)
+            weightKg = cleanNumber(canonicalWeightKg)
+            weightPounds = cleanNumber(UnitConverter.kilogramsToPounds(canonicalWeightKg))
             coefficient = it.equationCoefficient
             customBmr = it.customBmrMilliKcal?.fromMilli()?.let(::cleanNumber).orEmpty()
             fixedMode = it.targetMode == "FIXED"
@@ -79,18 +92,59 @@ fun SettingsScreen(
         }
     }
 
-    val input = runCatching {
-        TargetInput(
-            ageYears = age.toInt(),
-            heightCm = height.toDouble(),
-            weightKg = weight.toDouble(),
-            equationCoefficient = coefficient,
-            customBmrKcal = customBmr.toDoubleOrNull(),
-            fixedTargetKcal = if (fixedMode) fixedCalories.toDouble() else null,
-            activityFactor = activityFactor.toDouble(),
-            goalAdjustmentKcal = goalAdjustment.toDouble(),
-        )
+    fun selectUnitSystem(next: UnitSystem) {
+        if (unitSystem == next) return
+        when (next) {
+            UnitSystem.METRIC -> {
+                val feet = heightFeet.toIntOrNull()
+                val inches = heightInches.toDoubleOrNull()
+                if (feet != null && inches != null) {
+                    heightCm = cleanNumber(UnitConverter.feetAndInchesToCentimeters(feet, inches))
+                }
+                weightPounds.toDoubleOrNull()?.let {
+                    weightKg = cleanNumber(UnitConverter.poundsToKilograms(it))
+                }
+            }
+            UnitSystem.US -> {
+                heightCm.toDoubleOrNull()?.let {
+                    val usHeight = UnitConverter.centimetersToUsHeight(it)
+                    heightFeet = usHeight.feet.toString()
+                    heightInches = cleanNumber(usHeight.inches)
+                }
+                weightKg.toDoubleOrNull()?.let {
+                    weightPounds = cleanNumber(UnitConverter.kilogramsToPounds(it))
+                }
+            }
+        }
+        unitSystem = next
+    }
+
+    val canonicalBody = runCatching {
+        when (unitSystem) {
+            UnitSystem.METRIC -> heightCm.toDouble() to weightKg.toDouble()
+            UnitSystem.US -> {
+                val feet = heightFeet.toInt()
+                val inches = heightInches.toDouble()
+                require(feet >= 0 && inches >= 0.0 && inches < 12.0)
+                UnitConverter.feetAndInchesToCentimeters(feet, inches) to
+                    UnitConverter.poundsToKilograms(weightPounds.toDouble())
+            }
+        }
     }.getOrNull()
+    val input = canonicalBody?.let { (canonicalHeightCm, canonicalWeightKg) ->
+        runCatching {
+            TargetInput(
+                ageYears = age.toInt(),
+                heightCm = canonicalHeightCm,
+                weightKg = canonicalWeightKg,
+                equationCoefficient = coefficient,
+                customBmrKcal = customBmr.toDoubleOrNull(),
+                fixedTargetKcal = if (fixedMode) fixedCalories.toDouble() else null,
+                activityFactor = activityFactor.toDouble(),
+                goalAdjustmentKcal = goalAdjustment.toDouble(),
+            )
+        }.getOrNull()
+    }
     val preview = input?.let { runCatching { TargetCalculator.calculate(it) }.getOrNull() }
     val macros = listOf(protein, carbs, fat).map { it.toDoubleOrNull() }
     val macroValid = macros.all { it != null && it >= 0 } && (macroMode == "GRAMS" || kotlin.math.abs(macros.filterNotNull().sum() - 100.0) < 0.01)
@@ -109,9 +163,32 @@ fun SettingsScreen(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Body inputs", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = unitSystem == UnitSystem.METRIC,
+                            onClick = { selectUnitSystem(UnitSystem.METRIC) },
+                            label = { Text("Metric") },
+                        )
+                        FilterChip(
+                            selected = unitSystem == UnitSystem.US,
+                            onClick = { selectUnitSystem(UnitSystem.US) },
+                            label = { Text("US") },
+                        )
+                    }
                     SettingsNumberField("Age (years)", age) { age = it }
-                    SettingsNumberField("Height (cm)", height) { height = it }
-                    SettingsNumberField("Weight (kg)", weight) { weight = it }
+                    when (unitSystem) {
+                        UnitSystem.METRIC -> {
+                            SettingsNumberField("Height (cm)", heightCm) { heightCm = it }
+                            SettingsNumberField("Weight (kg)", weightKg) { weightKg = it }
+                        }
+                        UnitSystem.US -> {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsNumberField("Height (ft)", heightFeet, Modifier.weight(1f)) { heightFeet = it }
+                                SettingsNumberField("Height (in)", heightInches, Modifier.weight(1f)) { heightInches = it }
+                            }
+                            SettingsNumberField("Weight (lb)", weightPounds) { weightPounds = it }
+                        }
+                    }
                     Text("Mifflin–St Jeor formula")
                     Text(
                         "This estimate uses a sex-specific equation term. Choose the formula matching the sex used for the calculation, or enter a measured BMR below to bypass it.",
@@ -195,6 +272,7 @@ fun SettingsScreen(
                         carbs = requireNotNull(macros[1]),
                         fat = requireNotNull(macros[2]),
                         useHealthConnect = useHealth,
+                        unitSystem = unitSystem,
                     )
                 },
             ) { Text("Save profile and targets") }
@@ -216,8 +294,13 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsNumberField(label: String, value: String, onValueChange: (String) -> Unit) {
-    OutlinedTextField(value, onValueChange, modifier = Modifier.fillMaxWidth(), label = { Text(label) }, singleLine = true)
+private fun SettingsNumberField(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    onValueChange: (String) -> Unit,
+) {
+    OutlinedTextField(value, onValueChange, modifier = modifier, label = { Text(label) }, singleLine = true)
 }
 
 private fun cleanNumber(value: Double): String = if (value == kotlin.math.round(value)) {

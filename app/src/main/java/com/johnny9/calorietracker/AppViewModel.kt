@@ -20,6 +20,7 @@ import com.johnny9.calorietracker.domain.RollingResult
 import com.johnny9.calorietracker.domain.RollingWindowCalculator
 import com.johnny9.calorietracker.domain.TargetCalculator
 import com.johnny9.calorietracker.domain.TargetInput
+import com.johnny9.calorietracker.domain.UnitSystem
 import com.johnny9.calorietracker.domain.fromMilli
 import com.johnny9.calorietracker.export.CsvExportService
 import com.johnny9.calorietracker.foodlookup.OnlineFoodCandidate
@@ -343,6 +344,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteEntry(id: String) = launchAction("Entry removed") { repository.deleteDiaryEntry(id) }
 
+    fun updateEntryQuantity(id: String, quantity: Double) = launchAction("Servings updated") {
+        repository.updateDiaryEntryQuantity(id, quantity)
+    }
+
     fun toggleDayComplete() = launchAction(if (today.value.isDayComplete) "Day reopened" else "Day marked complete") {
         val complete = !today.value.isDayComplete
         repository.setDayComplete(
@@ -360,6 +365,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         carbs: Double,
         fat: Double,
         useHealthConnect: Boolean,
+        unitSystem: UnitSystem,
     ) = launchAction("Targets saved") {
         repository.saveTarget(
             input = input,
@@ -369,6 +375,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             carbsTarget = carbs,
             fatTarget = fat,
             useHealthConnect = useHealthConnect,
+            unitSystem = unitSystem,
             existingTrackingStart = target.value?.trackingStartDate?.let(LocalDate::parse),
             zoneId = ZoneId.systemDefault(),
         )

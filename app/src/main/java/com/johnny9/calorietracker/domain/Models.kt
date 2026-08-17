@@ -32,6 +32,12 @@ data class Nutrients(
     )
 
     operator fun div(divisor: Double): Nutrients = times(1.0 / divisor)
+
+    fun rescaleQuantity(previousQuantity: Double, newQuantity: Double): Nutrients {
+        require(previousQuantity.isFinite() && previousQuantity > 0) { "Previous quantity must be positive and finite" }
+        require(newQuantity.isFinite() && newQuantity > 0) { "New quantity must be positive and finite" }
+        return this * (newQuantity / previousQuantity)
+    }
 }
 
 enum class DayCompleteness { MISSING, PARTIAL, COMPLETE, FASTED_ZERO }

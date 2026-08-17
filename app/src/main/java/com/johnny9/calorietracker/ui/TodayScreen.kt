@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -66,6 +67,7 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
     val onlineSearch by viewModel.onlineFoodSearch.collectAsState()
     val usdaSearch by viewModel.usdaFoodSearch.collectAsState()
     var addToMeal by remember { mutableStateOf<String?>(null) }
+    var entryToEdit by remember { mutableStateOf<DiaryEntryEntity?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(padding),
@@ -133,6 +135,7 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
                     name = meal,
                     entries = state.entries.filter { it.mealGroup == meal },
                     onAdd = { addToMeal = meal },
+                    onEdit = { entryToEdit = it },
                     onDelete = viewModel::deleteEntry,
                 )
             }
@@ -165,6 +168,17 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
             onUsdaSearch = viewModel::searchUsdaFoods,
             onOnlineSearch = viewModel::searchOnlineFoods,
             onSaveOnlineFood = viewModel::saveOnlineFood,
+        )
+    }
+
+    entryToEdit?.let { entry ->
+        EditServingDialog(
+            entry = entry,
+            onDismiss = { entryToEdit = null },
+            onSave = { quantity ->
+                viewModel.updateEntryQuantity(entry.id, quantity)
+                entryToEdit = null
+            },
         )
     }
 }
@@ -207,7 +221,13 @@ private fun MacroBar(label: String, value: Double, goal: Double) {
 }
 
 @Composable
-private fun MealSection(name: String, entries: List<DiaryEntryEntity>, onAdd: () -> Unit, onDelete: (String) -> Unit) {
+private fun MealSection(
+    name: String,
+    entries: List<DiaryEntryEntity>,
+    onAdd: () -> Unit,
+    onEdit: (DiaryEntryEntity) -> Unit,
+    onDelete: (String) -> Unit,
+) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 8.dp)) {
             Row(
@@ -230,9 +250,12 @@ private fun MealSection(name: String, entries: List<DiaryEntryEntity>, onAdd: ()
                         Column(Modifier.weight(1f)) {
                             Text(entry.nameSnapshot, fontWeight = FontWeight.Medium)
                             Text(
-                                "${entry.quantity} × ${entry.servingLabelSnapshot} · ${entry.caloriesMilliKcal.fromMilli().roundToInt()} kcal",
+                                "${formatQuantity(entry.quantity)} × ${entry.servingLabelSnapshot} · ${entry.caloriesMilliKcal.fromMilli().roundToInt()} kcal",
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                        }
+                        IconButton(onClick = { onEdit(entry) }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit servings for ${entry.nameSnapshot}")
                         }
                         IconButton(onClick = { onDelete(entry.id) }) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = "Delete ${entry.nameSnapshot}")
@@ -242,6 +265,45 @@ private fun MealSection(name: String, entries: List<DiaryEntryEntity>, onAdd: ()
             }
         }
     }
+}
+
+@Composable
+private fun EditServingDialog(
+    entry: DiaryEntryEntity,
+    onDismiss: () -> Unit,
+    onSave: (Double) -> Unit,
+) {
+    var quantityText by remember(entry.id, entry.quantity) { mutableStateOf(formatQuantity(entry.quantity)) }
+    val quantity = quantityText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
+    val updatedCalories = quantity?.let {
+        entry.caloriesMilliKcal.fromMilli() * (it / entry.quantity)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit servings") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(entry.nameSnapshot, fontWeight = FontWeight.Bold)
+                Text("1 serving = ${entry.servingLabelSnapshot}", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = quantityText,
+                    onValueChange = { quantityText = it },
+                    label = { Text("Number of servings") },
+                    singleLine = true,
+                )
+                updatedCalories?.let {
+                    Text("Updated total: ${it.roundToInt()} kcal", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Button(enabled = quantity != null, onClick = { quantity?.let(onSave) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -262,7 +324,7 @@ private fun AddEntryDialog(
 ) {
     var query by remember { mutableStateOf("") }
     var quantityText by remember { mutableStateOf("1") }
-    val quantity = quantityText.toDoubleOrNull()?.takeIf { it > 0 }
+    val quantity = quantityText.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
     val normalized = query.trim()
     val visibleFoods = foods.filter { it.matchesQuery(normalized) }
     val visibleRecipes = recipes.filter { normalized.isEmpty() || it.name.contains(normalized, ignoreCase = true) }
@@ -354,3 +416,9 @@ private fun EntryChoice(title: String, subtitle: String, enabled: Boolean, onCli
 }
 
 private fun Double.roundToInt(): Int = kotlin.math.round(this).toInt()
+
+private fun formatQuantity(value: Double): String = if (value == kotlin.math.round(value)) {
+    String.format(Locale.US, "%.0f", value)
+} else {
+    String.format(Locale.US, "%.3f", value).trimEnd('0').trimEnd('.')
+}

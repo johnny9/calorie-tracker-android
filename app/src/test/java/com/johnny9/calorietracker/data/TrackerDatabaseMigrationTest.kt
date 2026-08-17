@@ -22,7 +22,7 @@ class TrackerDatabaseMigrationTest {
 
         DriverManager.getConnection("jdbc:sqlite::memory:").use { database ->
             createSchema(database, versionOne)
-            val recordKeys = seedVersionOne(database, versionOne)
+            val recordKeys = seedSchema(database, versionOne)
             val countsBefore = versionOne.associate { entity -> entity.tableName to database.rowCount(entity.tableName) }
 
             database.autoCommit = false
@@ -64,6 +64,50 @@ class TrackerDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrationTwoToThreePreservesDataAndAddsMetricUnitDefault() {
+        val versionTwo = readSchema(2)
+        val versionThree = readSchema(3)
+        Class.forName("org.sqlite.JDBC")
+
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { database ->
+            createSchema(database, versionTwo)
+            val recordKeys = seedSchema(database, versionTwo)
+            val countsBefore = versionTwo.associate { entity -> entity.tableName to database.rowCount(entity.tableName) }
+
+            database.autoCommit = false
+            try {
+                database.createStatement().use { statement ->
+                    TrackerDatabase.MIGRATION_2_3_STATEMENTS.forEach(statement::execute)
+                }
+                database.commit()
+            } catch (error: Exception) {
+                database.rollback()
+                throw error
+            } finally {
+                database.autoCommit = true
+            }
+
+            countsBefore.forEach { (table, count) -> assertEquals("$table row count", count, database.rowCount(table)) }
+            recordKeys.forEach { (table, record) ->
+                val entity = versionTwo.single { it.tableName == table }
+                assertEquals("$table record survived", 1, database.recordCount(table, entity.primaryKey, record))
+            }
+
+            val expectedTarget = versionThree.single { it.tableName == "target_plans" }.fields.associateBy(Field::name)
+            val migratedTarget = database.columns("target_plans").associateBy(Column::name)
+            assertEquals(expectedTarget.keys, migratedTarget.keys)
+            expectedTarget.forEach { (name, expected) ->
+                assertNotNull("Missing migrated column $name", migratedTarget[name])
+                val actual = requireNotNull(migratedTarget[name])
+                assertEquals("$name affinity", expected.affinity, actual.affinity)
+                assertEquals("$name nullability", expected.notNull, actual.notNull)
+                assertEquals("$name default", expected.defaultValue, actual.defaultValue)
+            }
+            assertEquals("METRIC", database.targetUnitSystem(recordKeys.getValue("target_plans")))
+        }
+    }
+
     private fun readSchema(version: Int): List<SchemaEntity> {
         val relative = "schemas/com.johnny9.calorietracker.data.TrackerDatabase/$version.json"
         val file = sequenceOf(File(relative), File("app/$relative")).firstOrNull(File::isFile)
@@ -98,7 +142,7 @@ class TrackerDatabaseMigrationTest {
         }
     }
 
-    private fun seedVersionOne(database: Connection, entities: List<SchemaEntity>): Map<String, String> {
+    private fun seedSchema(database: Connection, entities: List<SchemaEntity>): Map<String, String> {
         database.insertLegacyFood("usda-food", "USDA_REFERENCE")
         database.insertLegacyFood("custom-food", "USER_CUSTOM")
         return entities.filterNot { it.tableName == "foods" }.associate { entity ->
@@ -159,6 +203,13 @@ class TrackerDatabaseMigrationTest {
     ).use { statement ->
         statement.setString(1, id)
         statement.executeQuery().use { rows -> rows.getLong(1) }
+    }
+
+    private fun Connection.targetUnitSystem(id: String): String = prepareStatement(
+        "SELECT unitSystem FROM target_plans WHERE id = ?",
+    ).use { statement ->
+        statement.setString(1, id)
+        statement.executeQuery().use { rows -> rows.getString(1) }
     }
 
     private fun Connection.columns(table: String): List<Column> = createStatement().use { statement ->

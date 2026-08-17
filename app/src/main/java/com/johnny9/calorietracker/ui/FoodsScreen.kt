@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import com.johnny9.calorietracker.AppViewModel
 import com.johnny9.calorietracker.data.FoodEntity
 import com.johnny9.calorietracker.domain.RecipeSummary
+import com.johnny9.calorietracker.domain.UnitConverter
+import com.johnny9.calorietracker.domain.UnitSystem
 import com.johnny9.calorietracker.domain.fromMilli
 import java.util.Locale
 import kotlin.math.round
@@ -51,6 +53,7 @@ fun FoodsScreen(viewModel: AppViewModel, padding: PaddingValues) {
     val recipes by viewModel.recipes.collectAsState()
     val onlineSearch by viewModel.onlineFoodSearch.collectAsState()
     val usdaSearch by viewModel.usdaFoodSearch.collectAsState()
+    val target by viewModel.target.collectAsState()
     var search by remember { mutableStateOf("") }
     var showFoodDialog by remember { mutableStateOf(false) }
     var showRecipeDialog by remember { mutableStateOf(false) }
@@ -136,6 +139,7 @@ fun FoodsScreen(viewModel: AppViewModel, padding: PaddingValues) {
 
     if (showFoodDialog) {
         CustomFoodDialog(
+            unitSystem = UnitSystem.fromStorage(target?.unitSystem),
             onDismiss = { showFoodDialog = false },
             onSave = { name, serving, grams, calories, protein, carbs, fat, fiber ->
                 viewModel.createFood(name, serving, grams, calories, protein, carbs, fat, fiber)
@@ -194,19 +198,22 @@ private fun RecipeRow(recipe: RecipeSummary, onArchive: () -> Unit) {
 
 @Composable
 private fun CustomFoodDialog(
+    unitSystem: UnitSystem,
     onDismiss: () -> Unit,
     onSave: (String, String, Double?, Double, Double, Double, Double, Double) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var serving by remember { mutableStateOf("1 serving") }
-    var grams by remember { mutableStateOf("") }
+    var servingWeight by remember(unitSystem) { mutableStateOf("") }
     var calories by remember { mutableStateOf("") }
     var protein by remember { mutableStateOf("") }
     var carbs by remember { mutableStateOf("") }
     var fat by remember { mutableStateOf("") }
     var fiber by remember { mutableStateOf("") }
     val parsed = listOf(calories, protein, carbs, fat, fiber).map { it.toDoubleOrNull() }
-    val valid = name.isNotBlank() && serving.isNotBlank() && parsed.all { it != null && it >= 0.0 }
+    val parsedServingWeight = servingWeight.toDoubleOrNull()
+    val servingWeightValid = servingWeight.isBlank() || (parsedServingWeight != null && parsedServingWeight > 0.0)
+    val valid = name.isNotBlank() && serving.isNotBlank() && servingWeightValid && parsed.all { it != null && it >= 0.0 }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -215,7 +222,12 @@ private fun CustomFoodDialog(
             LazyColumn(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true) }
                 item { OutlinedTextField(serving, { serving = it }, label = { Text("Serving label") }, singleLine = true) }
-                item { NumberField("Serving weight (g, optional)", grams) { grams = it } }
+                item {
+                    NumberField(
+                        if (unitSystem == UnitSystem.US) "Serving weight (oz, optional)" else "Serving weight (g, optional)",
+                        servingWeight,
+                    ) { servingWeight = it }
+                }
                 item { NumberField("Calories (kcal)", calories) { calories = it } }
                 item { NumberField("Protein (g)", protein) { protein = it } }
                 item { NumberField("Carbohydrate (g)", carbs) { carbs = it } }
@@ -226,7 +238,12 @@ private fun CustomFoodDialog(
         confirmButton = {
             Button(
                 enabled = valid,
-                onClick = { onSave(name, serving, grams.toDoubleOrNull(), parsed[0]!!, parsed[1]!!, parsed[2]!!, parsed[3]!!, parsed[4]!!) },
+                onClick = {
+                    val servingGrams = parsedServingWeight?.let {
+                        if (unitSystem == UnitSystem.US) UnitConverter.ouncesToGrams(it) else it
+                    }
+                    onSave(name, serving, servingGrams, parsed[0]!!, parsed[1]!!, parsed[2]!!, parsed[3]!!, parsed[4]!!)
+                },
             ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

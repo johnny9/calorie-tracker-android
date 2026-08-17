@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
@@ -79,6 +80,12 @@ interface TrackerDao {
 
     @Insert
     suspend fun insertDiaryEntry(entry: DiaryEntryEntity)
+
+    @Query("SELECT * FROM diary_entries WHERE id = :id LIMIT 1")
+    suspend fun diaryEntry(id: String): DiaryEntryEntity?
+
+    @Update
+    suspend fun updateDiaryEntry(entry: DiaryEntryEntity)
 
     @Query("DELETE FROM diary_entries WHERE id = :id")
     suspend fun deleteDiaryEntry(id: String)

@@ -1,8 +1,8 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 2,
-    "identityHash": "c16267ea2ed2ee7d48f1be1dd01d6440",
+    "version": 3,
+    "identityHash": "7298d172b55229f26a69ea70b88423be",
     "entities": [
       {
         "tableName": "foods",
@@ -516,7 +516,7 @@
       },
       {
         "tableName": "target_plans",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `effectiveFrom` TEXT NOT NULL, `trackingStartDate` TEXT NOT NULL, `homeTimeZoneId` TEXT NOT NULL, `isConfigured` INTEGER NOT NULL, `ageYears` INTEGER NOT NULL, `heightMilliCm` INTEGER NOT NULL, `weightMilliKg` INTEGER NOT NULL, `equationCoefficient` REAL NOT NULL, `customBmrMilliKcal` INTEGER, `targetMode` TEXT NOT NULL, `fixedTargetMilliKcal` INTEGER, `activityFactor` REAL NOT NULL, `goalAdjustmentMilliKcal` INTEGER NOT NULL, `targetCaloriesMilliKcal` INTEGER NOT NULL, `macroMode` TEXT NOT NULL, `proteinTarget` REAL NOT NULL, `carbsTarget` REAL NOT NULL, `fatTarget` REAL NOT NULL, `useHealthConnect` INTEGER NOT NULL, `updatedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `effectiveFrom` TEXT NOT NULL, `trackingStartDate` TEXT NOT NULL, `homeTimeZoneId` TEXT NOT NULL, `isConfigured` INTEGER NOT NULL, `unitSystem` TEXT NOT NULL DEFAULT 'METRIC', `ageYears` INTEGER NOT NULL, `heightMilliCm` INTEGER NOT NULL, `weightMilliKg` INTEGER NOT NULL, `equationCoefficient` REAL NOT NULL, `customBmrMilliKcal` INTEGER, `targetMode` TEXT NOT NULL, `fixedTargetMilliKcal` INTEGER, `activityFactor` REAL NOT NULL, `goalAdjustmentMilliKcal` INTEGER NOT NULL, `targetCaloriesMilliKcal` INTEGER NOT NULL, `macroMode` TEXT NOT NULL, `proteinTarget` REAL NOT NULL, `carbsTarget` REAL NOT NULL, `fatTarget` REAL NOT NULL, `useHealthConnect` INTEGER NOT NULL, `updatedAtEpochMs` INTEGER NOT NULL, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -547,6 +547,13 @@
             "columnName": "isConfigured",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "unitSystem",
+            "columnName": "unitSystem",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'METRIC'"
           },
           {
             "fieldPath": "ageYears",
@@ -715,7 +722,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c16267ea2ed2ee7d48f1be1dd01d6440')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7298d172b55229f26a69ea70b88423be')"
     ]
   }
 }

@@ -108,6 +108,7 @@ data class TargetPlanEntity(
     val trackingStartDate: String,
     val homeTimeZoneId: String,
     val isConfigured: Boolean,
+    @ColumnInfo(defaultValue = "'METRIC'") val unitSystem: String = "METRIC",
     val ageYears: Int,
     val heightMilliCm: Long,
     val weightMilliKg: Long,

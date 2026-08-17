@@ -5,6 +5,7 @@ import com.johnny9.calorietracker.domain.Nutrients
 import com.johnny9.calorietracker.domain.RecipeSummary
 import com.johnny9.calorietracker.domain.TargetCalculator
 import com.johnny9.calorietracker.domain.TargetInput
+import com.johnny9.calorietracker.domain.UnitSystem
 import com.johnny9.calorietracker.domain.toMilli
 import com.johnny9.calorietracker.data.usda.UsdaFoodRecord
 import com.johnny9.calorietracker.foodlookup.OnlineFoodProduct
@@ -52,6 +53,7 @@ class TrackerRepository(private val database: TrackerDatabase) {
                     trackingStartDate = today.toString(),
                     homeTimeZoneId = ZoneId.systemDefault().id,
                     isConfigured = false,
+                    unitSystem = UnitSystem.METRIC.name,
                     ageYears = 35,
                     heightMilliCm = 170.0.toMilli(),
                     weightMilliKg = 70.0.toMilli(),
@@ -207,14 +209,14 @@ class TrackerRepository(private val database: TrackerDatabase) {
     }
 
     suspend fun logFood(date: LocalDate, mealGroup: String, foodId: String, quantity: Double) {
-        require(quantity > 0)
+        require(quantity.isFinite() && quantity > 0)
         val food = requireNotNull(dao.food(foodId))
         val nutrients = food.nutrients() * quantity
         insertDiary(date, mealGroup, "FOOD", food.id, food.name, food.servingLabel, quantity, nutrients)
     }
 
     suspend fun logRecipe(date: LocalDate, mealGroup: String, recipeId: String, quantity: Double) {
-        require(quantity > 0)
+        require(quantity.isFinite() && quantity > 0)
         val recipe = requireNotNull(dao.recipe(recipeId))
         val total = dao.ingredientsForRecipe(recipeId).fold(Nutrients()) { accumulator, row ->
             accumulator + row.nutrientsPerServing() * row.quantity
@@ -254,6 +256,24 @@ class TrackerRepository(private val database: TrackerDatabase) {
     }
 
     suspend fun deleteDiaryEntry(id: String) = dao.deleteDiaryEntry(id)
+
+    suspend fun updateDiaryEntryQuantity(id: String, quantity: Double) {
+        require(quantity.isFinite() && quantity > 0) { "Number of servings must be positive and finite" }
+        database.withTransaction {
+            val entry = requireNotNull(dao.diaryEntry(id)) { "Diary entry no longer exists" }
+            val nutrients = entry.nutrients().rescaleQuantity(entry.quantity, quantity)
+            dao.updateDiaryEntry(
+                entry.copy(
+                    quantity = quantity,
+                    caloriesMilliKcal = nutrients.caloriesMilliKcal,
+                    proteinMilliGram = nutrients.proteinMilliGram,
+                    carbsMilliGram = nutrients.carbsMilliGram,
+                    fatMilliGram = nutrients.fatMilliGram,
+                    fiberMilliGram = nutrients.fiberMilliGram,
+                ),
+            )
+        }
+    }
 
     suspend fun setDayComplete(date: LocalDate, complete: Boolean, intentionalZero: Boolean = false) {
         dao.upsertDayState(
@@ -301,6 +321,7 @@ class TrackerRepository(private val database: TrackerDatabase) {
         carbsTarget: Double,
         fatTarget: Double,
         useHealthConnect: Boolean,
+        unitSystem: UnitSystem,
         existingTrackingStart: LocalDate?,
         zoneId: ZoneId,
     ): TargetPlanEntity {
@@ -317,6 +338,7 @@ class TrackerRepository(private val database: TrackerDatabase) {
             trackingStartDate = (existingTrackingStart ?: LocalDate.now(zoneId)).toString(),
             homeTimeZoneId = zoneId.id,
             isConfigured = true,
+            unitSystem = unitSystem.name,
             ageYears = input.ageYears,
             heightMilliCm = input.heightCm.toMilli(),
             weightMilliKg = input.weightKg.toMilli(),
@@ -369,4 +391,12 @@ fun RecipeIngredientEntity.nutrientsPerServing() = Nutrients(
     carbsMilliGramPerServing,
     fatMilliGramPerServing,
     fiberMilliGramPerServing,
+)
+
+private fun DiaryEntryEntity.nutrients() = Nutrients(
+    caloriesMilliKcal,
+    proteinMilliGram,
+    carbsMilliGram,
+    fatMilliGram,
+    fiberMilliGram,
 )
