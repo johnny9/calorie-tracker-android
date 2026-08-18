@@ -52,6 +52,7 @@ import com.johnny9.calorietracker.UsdaFoodSearchUiState
 import com.johnny9.calorietracker.data.DiaryEntryEntity
 import com.johnny9.calorietracker.data.FoodEntity
 import com.johnny9.calorietracker.domain.RecipeSummary
+import com.johnny9.calorietracker.domain.RestingCaloriesSource
 import com.johnny9.calorietracker.domain.fromMilli
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -113,6 +114,11 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
                     SummaryMetric("Net", state.netMilliKcal, Modifier.weight(1f))
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SummaryMetric("Resting", state.restingMilliKcal, Modifier.weight(1f))
+                    SummaryMetric("Total burn", state.totalBurnMilliKcal, Modifier.weight(1f))
+                    SummaryMetric("Balance", state.energyBalanceMilliKcal, Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SummaryMetric("Target", state.targetMilliKcal, Modifier.weight(1f))
                     SummaryMetric("Remaining", state.remainingMilliKcal, Modifier.weight(1f))
                 }
@@ -121,6 +127,20 @@ fun TodayScreen(viewModel: AppViewModel, padding: PaddingValues, onOpenSettings:
                         "Active calories and Net are unavailable until this day is synced. Day status: ${state.completeness.name.lowercase().replace('_', ' ')}"
                     } else {
                         "Net = intake − active calories. Day status: ${state.completeness.name.lowercase().replace('_', ' ')}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    when (state.restingSource) {
+                        RestingCaloriesSource.HEALTH_CONNECT ->
+                            "Total burn uses device resting calories from Health Connect plus active calories. Balance = intake − total burn."
+                        RestingCaloriesSource.APP_BMR -> if (state.totalBurnMilliKcal == null) {
+                            "Device resting calories are unavailable, so Resting uses the app BMR estimate. Total burn and Balance will appear after active calories sync."
+                        } else {
+                            "Device resting calories are unavailable, so Total burn uses the app BMR estimate plus active calories. Balance = intake − total burn."
+                        }
+                        RestingCaloriesSource.UNAVAILABLE ->
+                            "Configure your body inputs to estimate resting calories, or sync a device through Health Connect."
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )

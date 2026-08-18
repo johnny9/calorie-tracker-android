@@ -9,7 +9,9 @@ import com.johnny9.calorietracker.data.FoodEntity
 import com.johnny9.calorietracker.data.TargetPlanEntity
 import com.johnny9.calorietracker.data.TrackerRepository
 import com.johnny9.calorietracker.domain.DayCompleteness
+import com.johnny9.calorietracker.domain.DailyEnergyCalculator
 import com.johnny9.calorietracker.domain.fromMilli
+import com.johnny9.calorietracker.domain.toMilli
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.OutputStreamWriter
@@ -76,8 +78,8 @@ class CsvExportService(
                 )
                 zip.csv(
                     "activity_daily.csv",
-                    listOf("schema_version", "local_date", "active_kcal", "source", "known", "stale", "synced_at_epoch_ms"),
-                    activity.map { listOf(EXPORT_SCHEMA_VERSION, it.localDate, it.activeCaloriesMilliKcal.fromMilli(), it.source, it.isKnown, it.isStale, it.syncedAtEpochMs) },
+                    listOf("schema_version", "local_date", "active_kcal", "resting_kcal", "source", "known", "stale", "synced_at_epoch_ms"),
+                    activity.map { listOf(EXPORT_SCHEMA_VERSION, it.localDate, it.activeCaloriesMilliKcal.fromMilli(), it.restingCaloriesMilliKcal?.fromMilli(), it.source, it.isKnown, it.isStale, it.syncedAtEpochMs) },
                 )
                 zip.csv(
                     "targets.csv",
@@ -91,7 +93,7 @@ class CsvExportService(
                 )
                 zip.csv(
                     "daily_summaries.csv",
-                    listOf("schema_version", "local_date", "intake_kcal", "active_kcal", "net_kcal", "completeness"),
+                    listOf("schema_version", "local_date", "intake_kcal", "active_kcal", "net_kcal", "resting_kcal", "resting_source", "total_burn_kcal", "energy_balance_kcal", "completeness"),
                     dailySummaryRows(diary, states, activity, targets.lastOrNull()),
                 )
             }
@@ -117,18 +119,46 @@ class CsvExportService(
                 activityKnown -> activeRow?.activeCaloriesMilliKcal
                 else -> null
             }
+            val energy = DailyEnergyCalculator.calculate(
+                intakeMilliKcal = intake,
+                activeMilliKcal = active,
+                healthConnectRestingMilliKcal = activeRow?.restingCaloriesMilliKcal
+                    ?.takeIf { target?.useHealthConnect == true && activityKnown },
+                appBmrMilliKcal = target?.appBmrMilliKcal(),
+            )
             val completeness = when {
                 dayState?.isComplete == true && activityKnown && dayState.intentionalZero && intake == 0L -> DayCompleteness.FASTED_ZERO
                 dayState?.isComplete == true && activityKnown -> DayCompleteness.COMPLETE
                 intake != 0L || dayState != null || activeRow != null -> DayCompleteness.PARTIAL
                 else -> DayCompleteness.MISSING
             }
-            listOf(EXPORT_SCHEMA_VERSION, date, intake.fromMilli(), active?.fromMilli(), active?.let { (intake - it).fromMilli() }, completeness.name)
+            listOf(
+                EXPORT_SCHEMA_VERSION,
+                date,
+                intake.fromMilli(),
+                active?.fromMilli(),
+                active?.let { (intake - it).fromMilli() },
+                energy.restingMilliKcal?.fromMilli(),
+                energy.restingSource.name,
+                energy.totalBurnMilliKcal?.fromMilli(),
+                energy.energyBalanceMilliKcal?.fromMilli(),
+                completeness.name,
+            )
         }
     }
 }
 
-internal const val EXPORT_SCHEMA_VERSION = "3"
+internal const val EXPORT_SCHEMA_VERSION = "4"
+
+private fun TargetPlanEntity.appBmrMilliKcal(): Long? {
+    if (!isConfigured) return null
+    return customBmrMilliKcal ?: (
+        10.0 * weightMilliKg.fromMilli() +
+            6.25 * heightMilliCm.fromMilli() -
+            5.0 * ageYears +
+            equationCoefficient
+        ).takeIf { it > 0.0 }?.toMilli()
+}
 
 internal fun sourceUrl(food: FoodEntity): String? = when (food.source) {
     "USDA_REFERENCE" -> "https://fdc.nal.usda.gov/"

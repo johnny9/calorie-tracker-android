@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TargetPlanEntity::class,
         FastingPeriodEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class TrackerDatabase : RoomDatabase() {
@@ -39,12 +39,18 @@ abstract class TrackerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                MIGRATION_3_4_STATEMENTS.forEach(db::execSQL)
+            }
+        }
+
         fun get(context: Context): TrackerDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 TrackerDatabase::class.java,
                 "calorie-tracker.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 .also { instance = it }
         }
@@ -67,6 +73,10 @@ abstract class TrackerDatabase : RoomDatabase() {
 
         internal val MIGRATION_2_3_STATEMENTS = listOf(
             "ALTER TABLE target_plans ADD COLUMN unitSystem TEXT NOT NULL DEFAULT 'METRIC'",
+        )
+
+        internal val MIGRATION_3_4_STATEMENTS = listOf(
+            "ALTER TABLE activity_daily ADD COLUMN restingCaloriesMilliKcal INTEGER",
         )
     }
 }

@@ -286,11 +286,19 @@ class TrackerRepository(private val database: TrackerDatabase) {
         )
     }
 
-    suspend fun upsertActivity(date: LocalDate, activeCaloriesKcal: Double, source: String, known: Boolean, stale: Boolean = false) {
+    suspend fun upsertActivity(
+        date: LocalDate,
+        activeCaloriesKcal: Double,
+        restingCaloriesKcal: Double?,
+        source: String,
+        known: Boolean,
+        stale: Boolean = false,
+    ) {
         dao.upsertActivity(
             ActivityDailyEntity(
                 localDate = date.toString(),
                 activeCaloriesMilliKcal = activeCaloriesKcal.toMilli(),
+                restingCaloriesMilliKcal = restingCaloriesKcal?.toMilli(),
                 source = source,
                 isKnown = known,
                 isStale = stale,

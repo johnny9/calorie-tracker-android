@@ -220,7 +220,7 @@ fun SettingsScreen(
                         SettingsNumberField("Goal adjustment (kcal/day)", goalAdjustment) { goalAdjustment = it }
                     }
                     preview?.let { Text(String.format(Locale.US, "Saved target will be %.0f kcal/day", it.targetKcal), fontWeight = FontWeight.Bold) }
-                    Text("Health Connect activity affects Net, not this target, so the target does not move during the day.", style = MaterialTheme.typography.bodySmall)
+                    Text("Health Connect active calories affect Net; active and resting calories affect Total burn. Neither changes this saved target during the day.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -242,10 +242,10 @@ fun SettingsScreen(
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Activity from Health Connect", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Energy from Health Connect", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
-                            Text("Use imported active calories")
+                            Text("Use imported active and resting calories")
                             Text("Read-only and optional", style = MaterialTheme.typography.bodySmall)
                         }
                         Switch(checked = useHealth, onCheckedChange = { useHealth = it })
@@ -253,8 +253,13 @@ fun SettingsScreen(
                     Text(health.message, style = MaterialTheme.typography.bodySmall)
                     when {
                         health.availability != HealthAvailability.AVAILABLE -> OutlinedButton(onClick = {}, enabled = false) { Text("Health Connect unavailable") }
-                        !health.hasPermission -> OutlinedButton(onClick = onRequestHealthPermission) { Text("Grant active-calorie access") }
-                        else -> OutlinedButton(onClick = viewModel::syncHealth) { Text("Sync last 30 days") }
+                        !health.hasPermission -> OutlinedButton(onClick = onRequestHealthPermission) { Text("Grant energy access") }
+                        else -> {
+                            OutlinedButton(onClick = viewModel::syncHealth) { Text("Sync last 30 days") }
+                            if (!health.hasRestingPermission) {
+                                OutlinedButton(onClick = onRequestHealthPermission) { Text("Grant resting-calorie access") }
+                            }
+                        }
                     }
                 }
             }

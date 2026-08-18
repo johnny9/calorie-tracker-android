@@ -38,6 +38,6 @@ class CsvTest {
         )
 
         assertEquals("https://world.openfoodfacts.org/product/0856584004190?rev=25", sourceUrl(food))
-        assertEquals("3", EXPORT_SCHEMA_VERSION)
+        assertEquals("4", EXPORT_SCHEMA_VERSION)
     }
 }

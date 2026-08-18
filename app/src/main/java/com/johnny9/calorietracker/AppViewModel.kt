@@ -13,15 +13,18 @@ import com.johnny9.calorietracker.data.TargetPlanEntity
 import com.johnny9.calorietracker.data.usda.UsdaCatalogSource
 import com.johnny9.calorietracker.data.usda.UsdaFoodSummary
 import com.johnny9.calorietracker.domain.DailyPoint
+import com.johnny9.calorietracker.domain.DailyEnergyCalculator
 import com.johnny9.calorietracker.domain.DayCompleteness
 import com.johnny9.calorietracker.domain.Nutrients
 import com.johnny9.calorietracker.domain.RecipeSummary
 import com.johnny9.calorietracker.domain.RollingResult
 import com.johnny9.calorietracker.domain.RollingWindowCalculator
+import com.johnny9.calorietracker.domain.RestingCaloriesSource
 import com.johnny9.calorietracker.domain.TargetCalculator
 import com.johnny9.calorietracker.domain.TargetInput
 import com.johnny9.calorietracker.domain.UnitSystem
 import com.johnny9.calorietracker.domain.fromMilli
+import com.johnny9.calorietracker.domain.toMilli
 import com.johnny9.calorietracker.export.CsvExportService
 import com.johnny9.calorietracker.foodlookup.OnlineFoodCandidate
 import com.johnny9.calorietracker.health.HealthConnectManager
@@ -39,7 +42,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
-import kotlin.math.roundToLong
 
 data class MacroGoals(
     val proteinGram: Double = 0.0,
@@ -51,6 +53,8 @@ data class TodayUiState(
     val entries: List<DiaryEntryEntity> = emptyList(),
     val nutrients: Nutrients = Nutrients(),
     val activeMilliKcal: Long? = 0,
+    val restingMilliKcal: Long? = null,
+    val restingSource: RestingCaloriesSource = RestingCaloriesSource.UNAVAILABLE,
     val targetMilliKcal: Long = 0,
     val isDayComplete: Boolean = false,
     val completeness: DayCompleteness = DayCompleteness.MISSING,
@@ -59,6 +63,8 @@ data class TodayUiState(
 ) {
     val intakeMilliKcal get() = nutrients.caloriesMilliKcal
     val netMilliKcal get() = activeMilliKcal?.let { intakeMilliKcal - it }
+    val totalBurnMilliKcal get() = activeMilliKcal?.let { active -> restingMilliKcal?.let { it + active } }
+    val energyBalanceMilliKcal get() = totalBurnMilliKcal?.let { intakeMilliKcal - it }
     val remainingMilliKcal get() = targetMilliKcal - intakeMilliKcal
 }
 
@@ -135,14 +141,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val nutrients = rows.fold(Nutrients()) { sum, row -> sum + row.nutrients() }
         val activityKnown = plan?.useHealthConnect != true || (activityRow?.isKnown == true && !activityRow.isStale)
         val completeness = completeness(rows, state, activityRow, activityKnown)
+        val active = when {
+            plan?.useHealthConnect != true -> 0
+            activityKnown -> activityRow?.activeCaloriesMilliKcal
+            else -> null
+        }
+        val energy = DailyEnergyCalculator.calculate(
+            intakeMilliKcal = nutrients.caloriesMilliKcal,
+            activeMilliKcal = active,
+            healthConnectRestingMilliKcal = activityRow?.restingCaloriesMilliKcal
+                ?.takeIf { plan?.useHealthConnect == true && activityKnown },
+            appBmrMilliKcal = plan?.appBmrMilliKcal(),
+        )
         TodayUiState(
             entries = rows,
             nutrients = nutrients,
-            activeMilliKcal = when {
-                plan?.useHealthConnect != true -> 0
-                activityKnown -> activityRow?.activeCaloriesMilliKcal
-                else -> null
-            },
+            activeMilliKcal = active,
+            restingMilliKcal = energy.restingMilliKcal,
+            restingSource = energy.restingSource,
             targetMilliKcal = plan?.targetCaloriesMilliKcal ?: 0,
             isDayComplete = state?.isComplete == true,
             completeness = completeness,
@@ -386,7 +402,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (healthState.value.hasPermission) syncHealth()
     }
 
-    fun syncHealth() = launchAction("Last 30 days of activity synced") {
+    fun syncHealth() = launchAction("Last 30 days of active and resting calories synced") {
         val zone = target.value?.homeTimeZoneId?.let(ZoneId::of) ?: ZoneId.systemDefault()
         val end = selectedDate.value
         healthManager.syncRange(end.minusDays(29), end, zone).getOrThrow()
@@ -442,4 +458,14 @@ private fun TargetPlanEntity.macroGoals(): MacroGoals {
         fatTarget,
     )
     return MacroGoals(protein, carbs, fat)
+}
+
+private fun TargetPlanEntity.appBmrMilliKcal(): Long? {
+    if (!isConfigured) return null
+    return customBmrMilliKcal ?: (
+        10.0 * weightMilliKg.fromMilli() +
+            6.25 * heightMilliCm.fromMilli() -
+            5.0 * ageYears +
+            equationCoefficient
+        ).takeIf { it > 0.0 }?.toMilli()
 }

@@ -95,6 +95,7 @@ data class DayStateEntity(
 data class ActivityDailyEntity(
     @PrimaryKey val localDate: String,
     val activeCaloriesMilliKcal: Long,
+    val restingCaloriesMilliKcal: Long? = null,
     val source: String,
     val isKnown: Boolean,
     val isStale: Boolean,

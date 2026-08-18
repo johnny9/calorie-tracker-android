@@ -36,6 +36,40 @@ object TargetCalculator {
     }
 }
 
+enum class RestingCaloriesSource { HEALTH_CONNECT, APP_BMR, UNAVAILABLE }
+
+data class DailyEnergyResult(
+    val restingMilliKcal: Long?,
+    val restingSource: RestingCaloriesSource,
+    val totalBurnMilliKcal: Long?,
+    val energyBalanceMilliKcal: Long?,
+)
+
+object DailyEnergyCalculator {
+    fun calculate(
+        intakeMilliKcal: Long,
+        activeMilliKcal: Long?,
+        healthConnectRestingMilliKcal: Long?,
+        appBmrMilliKcal: Long?,
+    ): DailyEnergyResult {
+        val deviceResting = healthConnectRestingMilliKcal?.takeIf { it > 0 }
+        val fallbackResting = appBmrMilliKcal?.takeIf { it > 0 }
+        val resting = deviceResting ?: fallbackResting
+        val source = when {
+            deviceResting != null -> RestingCaloriesSource.HEALTH_CONNECT
+            fallbackResting != null -> RestingCaloriesSource.APP_BMR
+            else -> RestingCaloriesSource.UNAVAILABLE
+        }
+        val totalBurn = activeMilliKcal?.let { active -> resting?.let { it + active } }
+        return DailyEnergyResult(
+            restingMilliKcal = resting,
+            restingSource = source,
+            totalBurnMilliKcal = totalBurn,
+            energyBalanceMilliKcal = totalBurn?.let { intakeMilliKcal - it },
+        )
+    }
+}
+
 object RollingWindowCalculator {
     fun calculate(
         points: List<DailyPoint>,

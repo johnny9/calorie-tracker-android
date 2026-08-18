@@ -108,6 +108,53 @@ class TrackerDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrationThreeToFourPreservesDataAndAddsNullableRestingCalories() {
+        val versionThree = readSchema(3)
+        val versionFour = readSchema(4)
+        Class.forName("org.sqlite.JDBC")
+
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { database ->
+            createSchema(database, versionThree)
+            val recordKeys = seedSchema(database, versionThree)
+            val countsBefore = versionThree.associate { entity -> entity.tableName to database.rowCount(entity.tableName) }
+
+            database.autoCommit = false
+            try {
+                database.createStatement().use { statement ->
+                    TrackerDatabase.MIGRATION_3_4_STATEMENTS.forEach(statement::execute)
+                }
+                database.commit()
+            } catch (error: Exception) {
+                database.rollback()
+                throw error
+            } finally {
+                database.autoCommit = true
+            }
+
+            countsBefore.forEach { (table, count) -> assertEquals("$table row count", count, database.rowCount(table)) }
+            recordKeys.forEach { (table, record) ->
+                val entity = versionThree.single { it.tableName == table }
+                assertEquals("$table record survived", 1, database.recordCount(table, entity.primaryKey, record))
+            }
+
+            val expectedActivity = versionFour.single { it.tableName == "activity_daily" }.fields.associateBy(Field::name)
+            val migratedActivity = database.columns("activity_daily").associateBy(Column::name)
+            assertEquals(expectedActivity.keys, migratedActivity.keys)
+            expectedActivity.forEach { (name, expected) ->
+                assertNotNull("Missing migrated column $name", migratedActivity[name])
+                val actual = requireNotNull(migratedActivity[name])
+                assertEquals("$name affinity", expected.affinity, actual.affinity)
+                assertEquals("$name nullability", expected.notNull, actual.notNull)
+                assertEquals("$name default", expected.defaultValue, actual.defaultValue)
+            }
+            assertEquals(
+                true,
+                database.activityRestingIsNull(recordKeys.getValue("activity_daily")),
+            )
+        }
+    }
+
     private fun readSchema(version: Int): List<SchemaEntity> {
         val relative = "schemas/com.johnny9.calorietracker.data.TrackerDatabase/$version.json"
         val file = sequenceOf(File(relative), File("app/$relative")).firstOrNull(File::isFile)
@@ -210,6 +257,13 @@ class TrackerDatabaseMigrationTest {
     ).use { statement ->
         statement.setString(1, id)
         statement.executeQuery().use { rows -> rows.getString(1) }
+    }
+
+    private fun Connection.activityRestingIsNull(localDate: String): Boolean = prepareStatement(
+        "SELECT restingCaloriesMilliKcal IS NULL FROM activity_daily WHERE localDate = ?",
+    ).use { statement ->
+        statement.setString(1, localDate)
+        statement.executeQuery().use { rows -> rows.getInt(1) == 1 }
     }
 
     private fun Connection.columns(table: String): List<Column> = createStatement().use { statement ->

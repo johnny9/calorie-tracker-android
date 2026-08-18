@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
+import androidx.health.connect.client.records.BasalMetabolicRateRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.johnny9.calorietracker.data.TrackerRepository
@@ -18,6 +19,7 @@ enum class HealthAvailability { AVAILABLE, UPDATE_REQUIRED, UNAVAILABLE }
 data class HealthConnectState(
     val availability: HealthAvailability = HealthAvailability.UNAVAILABLE,
     val hasPermission: Boolean = false,
+    val hasRestingPermission: Boolean = false,
     val message: String = "Health Connect status has not been checked",
 )
 
@@ -31,18 +33,23 @@ class HealthConnectManager(
     suspend fun refreshStatus() {
         val availability = availability()
         val granted = if (availability == HealthAvailability.AVAILABLE) {
-            runCatching { client().permissionController.getGrantedPermissions().contains(ACTIVE_CALORIES_PERMISSION) }
-                .getOrDefault(false)
+            runCatching { client().permissionController.getGrantedPermissions() }
+                .getOrDefault(emptySet())
         } else {
-            false
+            emptySet()
         }
+        val hasActivePermission = ACTIVE_CALORIES_PERMISSION in granted
+        val hasRestingPermission = RESTING_CALORIES_PERMISSION in granted
         mutableState.value = HealthConnectState(
             availability = availability,
-            hasPermission = granted,
+            hasPermission = hasActivePermission,
+            hasRestingPermission = hasRestingPermission,
             message = when {
-                availability == HealthAvailability.UPDATE_REQUIRED -> "Install or update Health Connect to import activity"
+                availability == HealthAvailability.UPDATE_REQUIRED -> "Install or update Health Connect to import energy data"
                 availability == HealthAvailability.UNAVAILABLE -> "Health Connect is unavailable on this device"
-                granted -> "Active-calorie access granted"
+                hasActivePermission && hasRestingPermission -> "Active and resting-calorie access granted"
+                hasActivePermission -> "Active access granted; app BMR will be used until resting access is granted"
+                hasRestingPermission -> "Resting access granted; active-calorie access is still needed"
                 else -> "Permission is optional; food tracking works without it"
             },
         )
@@ -70,17 +77,33 @@ class HealthConnectManager(
         runCatching {
             val start = date.atStartOfDay(zoneId).toInstant()
             val end = date.plusDays(1).atStartOfDay(zoneId).toInstant()
-            val metric = ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL
+            val activeMetric = ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL
+            val restingMetric = BasalMetabolicRateRecord.BASAL_CALORIES_TOTAL
             val result = client().aggregate(
                 AggregateRequest(
-                    metrics = setOf(metric),
+                    metrics = if (state.value.hasRestingPermission) {
+                        setOf(activeMetric, restingMetric)
+                    } else {
+                        setOf(activeMetric)
+                    },
                     timeRangeFilter = TimeRangeFilter.between(start, end),
                 ),
             )
             // A successful aggregate with no contributing record is Health
             // Connect's known-zero result for this interval.
-            val calories = result[metric]?.inKilocalories ?: 0.0
-            repository.upsertActivity(date, calories, "HEALTH_CONNECT", known = true)
+            val activeCalories = result[activeMetric]?.inKilocalories ?: 0.0
+            // Unlike active energy, an absent basal aggregate is not a known
+            // zero. Preserve it as missing so the app can use its BMR fallback.
+            val restingCalories = result[restingMetric]
+                ?.inKilocalories
+                ?.takeIf { it.isFinite() && it > 0.0 }
+            repository.upsertActivity(
+                date = date,
+                activeCaloriesKcal = activeCalories,
+                restingCaloriesKcal = restingCalories,
+                source = "HEALTH_CONNECT",
+                known = true,
+            )
         }.onFailure {
             repository.markActivitySyncFailed(date)
         }.getOrThrow()
@@ -97,6 +120,8 @@ class HealthConnectManager(
     companion object {
         val ACTIVE_CALORIES_PERMISSION: String =
             HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class)
-        val REQUIRED_PERMISSIONS: Set<String> = setOf(ACTIVE_CALORIES_PERMISSION)
+        val RESTING_CALORIES_PERMISSION: String =
+            HealthPermission.getReadPermission(BasalMetabolicRateRecord::class)
+        val REQUIRED_PERMISSIONS: Set<String> = setOf(ACTIVE_CALORIES_PERMISSION, RESTING_CALORIES_PERMISSION)
     }
 }
