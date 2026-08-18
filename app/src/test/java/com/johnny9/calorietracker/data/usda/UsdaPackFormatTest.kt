@@ -21,6 +21,20 @@ class UsdaPackFormatTest {
     }
 
     @Test
+    fun presentsTheBrandSeparatelyFromTheProductName() {
+        val food = summary(
+            fdcId = 1,
+            length = 1,
+            name = "Chomps Original Beef Stick",
+            brand = "Chomps",
+        )
+
+        assertEquals("Original Beef Stick", food.displayName)
+        assertEquals("Chomps Original Beef Stick", food.name)
+        assertEquals("Chomps", food.brand)
+    }
+
+    @Test
     fun inflatesOnlyTheDeclaredVerifiedBlock() {
         val plain = "first canonical record\nsecond canonical record".encodeToByteArray()
         val compressed = ByteArrayOutputStream().also { output ->
@@ -99,11 +113,13 @@ class UsdaPackFormatTest {
         length: Int,
         servingLabel: String = "1 serving",
         calories: Double = 100.0,
+        name: String = "Test food",
+        brand: String? = null,
     ) = UsdaFoodSummary(
         rowId = 1,
         fdcId = fdcId,
-        name = "Test food",
-        brand = null,
+        name = name,
+        brand = brand,
         gtin = null,
         servingLabel = servingLabel,
         calories = calories,

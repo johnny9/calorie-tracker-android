@@ -50,6 +50,7 @@ class BuildCatalogTest(unittest.TestCase):
             self.assertEqual(1, manifest["deduplicated_record_count"])
             self.assertEqual(1, manifest["skipped_record_count"])
             self.assertEqual("usda-catalog.sqlite", manifest["database_entry"])
+            self.assertEqual("2", manifest["generator_version"])
             self.assertEqual(
                 hashlib.sha256((ROOT / "build_catalog.py").read_bytes()).hexdigest(),
                 manifest["generator_sha256"],
@@ -120,7 +121,18 @@ class BuildCatalogTest(unittest.TestCase):
                     """
                 )
             )
-            self.assertEqual([(201, "Chomps Original Beef Stick")], matches)
+            self.assertEqual([(201, "Original Beef Stick")], matches)
+            cross_field_matches = list(
+                database.execute(
+                    """
+                    SELECT f.fdc_id, f.name, f.brand
+                    FROM catalog_food_fts x
+                    JOIN catalog_food f ON f.rowid=x.rowid
+                    WHERE catalog_food_fts MATCH 'bubbles* AND lime*'
+                    """
+                )
+            )
+            self.assertEqual([(300, "Lime Sparkling Water", "Bubbles Company")], cross_field_matches)
             gtin = database.execute(
                 """
                 SELECT f.fdc_id FROM catalog_gtin g
@@ -152,6 +164,7 @@ class BuildCatalogTest(unittest.TestCase):
             self.assertEqual(block[3], hashlib.sha256(decoded).hexdigest())
             payload = json.loads(decoded[chomps[7] : chomps[7] + chomps[8]])
             self.assertEqual(201, payload["fdcId"])
+            self.assertEqual("Chomps Original Beef Stick", payload["description"])
             self.assertTrue(payload["fixtureUnknownField"]["mustRemain"])
             self.assertIn("foodUpdateLog", payload)
             self.assertIn("ingredients", payload)
@@ -163,6 +176,22 @@ class BuildCatalogTest(unittest.TestCase):
             ).fetchone()
             self.assertEqual((None,), yogurt)
             self.assertEqual(("ok",), database.execute("PRAGMA integrity_check").fetchone())
+
+    def test_product_titles_remove_only_a_duplicate_brand(self) -> None:
+        self.assertEqual(
+            "Original Beef Stick",
+            build_catalog._product_name("Chomps Original Beef Stick", "Chomps"),
+        )
+        self.assertEqual(
+            "Original Beef Stick",
+            build_catalog._product_name("CHOMPS® — Original Beef Stick", "Chomps"),
+        )
+        self.assertEqual(
+            "Original Beef Stick",
+            build_catalog._product_name("Original Beef Stick - Chomps", "Chomps"),
+        )
+        self.assertEqual("Goat Cheese", build_catalog._product_name("Goat Cheese", "Go"))
+        self.assertEqual("Chomps", build_catalog._product_name("Chomps", "Chomps"))
 
     def test_raw_and_zip_builds_are_byte_identical(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

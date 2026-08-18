@@ -1,5 +1,6 @@
 package com.johnny9.calorietracker.data.usda
 
+import com.johnny9.calorietracker.domain.cleanFoodName
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -62,6 +63,9 @@ data class UsdaFoodSummary(
     internal val recordOffset: Int,
     internal val recordLength: Int,
 ) {
+    val displayName: String
+        get() = cleanFoodName(name, brand)
+
     val hasCompleteNutrition: Boolean
         get() = listOf(calories, protein, carbs, fat, fiber).all { it != null }
 

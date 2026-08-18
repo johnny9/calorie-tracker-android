@@ -152,7 +152,7 @@ class TrackerRepository(private val database: TrackerDatabase) {
         val presentNutrients = listOf(summary.calories, summary.protein, summary.carbs, summary.fat, summary.fiber).count { it != null }
         val row = FoodEntity(
             id = "usda:${summary.fdcId}",
-            name = summary.name,
+            name = summary.displayName,
             brand = summary.brand,
             servingLabel = summary.servingLabel,
             servingGramsMilli = record.servingGrams?.toMilli(),

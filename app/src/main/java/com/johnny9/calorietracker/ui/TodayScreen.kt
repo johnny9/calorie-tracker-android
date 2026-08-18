@@ -53,6 +53,7 @@ import com.johnny9.calorietracker.data.DiaryEntryEntity
 import com.johnny9.calorietracker.data.FoodEntity
 import com.johnny9.calorietracker.domain.RecipeSummary
 import com.johnny9.calorietracker.domain.RestingCaloriesSource
+import com.johnny9.calorietracker.domain.cleanFoodName
 import com.johnny9.calorietracker.domain.fromMilli
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -394,7 +395,8 @@ private fun AddEntryDialog(
                         item { Text("Foods", fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp)) }
                         items(visibleFoods, key = FoodEntity::id) { food ->
                             EntryChoice(
-                                title = food.brand?.let { "$it · ${food.name}" } ?: food.name,
+                                title = food.brand?.let { "$it · ${cleanFoodName(food.name, it)}" }
+                                    ?: cleanFoodName(food.name, null),
                                 subtitle = "${food.servingLabel} · ${food.caloriesMilliKcal.fromMilli().roundToInt()} kcal · ${food.sourceLabel()}",
                                 enabled = quantity != null,
                                 onClick = { quantity?.let { onFood(food.id, it) } },

@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.johnny9.calorietracker.UsdaFoodSearchUiState
 import com.johnny9.calorietracker.data.usda.UsdaFoodSummary
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
@@ -36,7 +38,7 @@ fun UsdaFoodSearchPanel(
 
     Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Offline USDA catalog", style = MaterialTheme.typography.titleSmall)
+            Text("USDA FoodData Central", style = MaterialTheme.typography.titleSmall)
             if (state.isSearching) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CircularProgressIndicator(strokeWidth = 2.dp)
@@ -46,7 +48,7 @@ fun UsdaFoodSearchPanel(
                 val source = state.source
                 if (source != null) {
                     Text(
-                        "${source.releaseId} · ${source.releaseDate} · ${source.license}",
+                        "Offline catalog · Updated ${source.releaseDate.displayDate()} · ${source.license}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -68,13 +70,6 @@ fun UsdaFoodSearchPanel(
                         onSelect = { onSelect(food.fdcId) },
                     )
                 }
-                source?.let {
-                    Text(
-                        it.attribution,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
         }
     }
@@ -92,10 +87,9 @@ private fun UsdaCandidateRow(
     onSelect: () -> Unit,
 ) {
     Column(Modifier.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(food.name, style = MaterialTheme.typography.bodyMedium)
+        Text(food.displayName, style = MaterialTheme.typography.bodyMedium)
         food.brand?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         Text(food.previewText(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text("FDC ${food.fdcId}", style = MaterialTheme.typography.labelSmall)
         if (!food.hasCompleteNutrition && food.hasRequiredNutrition) {
             Text("Fiber is unavailable and will be saved as 0 g.", style = MaterialTheme.typography.labelSmall)
         }
@@ -117,6 +111,10 @@ private fun UsdaCandidateRow(
         }
     }
 }
+
+private fun String.displayDate(): String = runCatching {
+    LocalDate.parse(this).format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US))
+}.getOrDefault(this)
 
 private fun UsdaFoodSummary.previewText(): String {
     val values = mutableListOf(servingLabel)

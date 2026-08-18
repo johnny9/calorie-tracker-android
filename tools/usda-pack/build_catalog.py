@@ -29,7 +29,7 @@ import zlib
 
 
 SCHEMA_VERSION = 1
-GENERATOR_VERSION = "1"
+GENERATOR_VERSION = "2"
 DEFAULT_BLOCK_TARGET_BYTES = 128 * 1024
 DATABASE_ENTRY = "usda-catalog.sqlite"
 LICENSE = "CC0-1.0"
@@ -174,6 +174,31 @@ def _text(value: Any) -> str | None:
     return normalized or None
 
 
+def _product_name(description: str, brand: str | None) -> str:
+    """Remove only an exact, delimited duplicate brand from a product title."""
+
+    if brand is None or len(brand) < 2 or description.casefold() == brand.casefold():
+        return description
+    escaped_brand = re.escape(brand)
+    separators = r"\-–—:|,•"
+    prefix = re.compile(
+        rf"^{escaped_brand}(?:\s*[®™©]\s*)?(?:\s*[{separators}]\s*|\s+)",
+        re.IGNORECASE,
+    )
+    suffix = re.compile(
+        rf"(?:\s*[{separators}]\s*|\s+){escaped_brand}(?:\s*[®™©])?$",
+        re.IGNORECASE,
+    )
+    if prefix.search(description):
+        candidate = prefix.sub("", description, count=1)
+    elif suffix.search(description):
+        candidate = suffix.sub("", description, count=1)
+    else:
+        return description
+    candidate = candidate.strip().strip("-–—:|,•").strip()
+    return candidate or description
+
+
 def _number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -278,10 +303,11 @@ def _canonical_json(record: Mapping[str, Any]) -> str:
 
 def _normalized_row(record: Mapping[str, Any]) -> tuple[Any, ...] | None:
     fdc_id = _integer(record.get("fdcId"))
-    name = _text(record.get("description"))
-    if fdc_id is None or name is None:
+    description = _text(record.get("description"))
+    if fdc_id is None or description is None:
         return None
     brand = _text(record.get("brandName")) or _text(record.get("brandOwner"))
+    name = _product_name(description, brand)
     gtin = normalize_gtin(record.get("gtinUpc"))
     serving_label = _serving_label(record)
     summaries = _label_summaries(record)

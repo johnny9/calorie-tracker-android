@@ -36,9 +36,11 @@ screen is not part of the current UI.
 
 ## Search and compression
 
-Names and brands are held in a SQLite FTS4 index so a query does not require
+Product names and brands are held as separate columns in a SQLite FTS4 index so a query does not require
 inflating the entire USDA download. GTIN/UPC values have a separate exact-match
-index. Search terms use token-prefix matching across name and brand; arbitrary
+index. A duplicate leading or trailing brand is removed from the display name
+while the original USDA description remains unchanged in the source payload.
+Search terms use token-prefix matching across both name and brand; arbitrary
 mid-token substring matching is intentionally not supported.
 
 Small summary columns provide the values needed to render result rows. Full

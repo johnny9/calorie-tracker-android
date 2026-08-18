@@ -43,6 +43,7 @@ import com.johnny9.calorietracker.data.FoodEntity
 import com.johnny9.calorietracker.domain.RecipeSummary
 import com.johnny9.calorietracker.domain.UnitConverter
 import com.johnny9.calorietracker.domain.UnitSystem
+import com.johnny9.calorietracker.domain.cleanFoodName
 import com.johnny9.calorietracker.domain.fromMilli
 import java.util.Locale
 import kotlin.math.round
@@ -165,7 +166,7 @@ private fun FoodRow(food: FoodEntity, onArchive: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(food.name, fontWeight = FontWeight.Medium)
+                Text(cleanFoodName(food.name, food.brand), fontWeight = FontWeight.Medium)
                 food.brand?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 Text(
                     "${food.servingLabel} · ${formatNumber(food.caloriesMilliKcal.fromMilli())} kcal · P ${formatNumber(food.proteinMilliGram.fromMilli())} · C ${formatNumber(food.carbsMilliGram.fromMilli())} · F ${formatNumber(food.fatMilliGram.fromMilli())}",
@@ -279,7 +280,7 @@ private fun RecipeDialog(
                                 onCheckedChange = { checked -> if (checked) quantities[food.id] = "1" else quantities.remove(food.id) },
                             )
                             Column(Modifier.weight(1f)) {
-                                Text(food.name)
+                                Text(cleanFoodName(food.name, food.brand))
                                 Text(food.servingLabel, style = MaterialTheme.typography.bodySmall)
                             }
                             if (selected) {
